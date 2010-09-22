@@ -109,7 +109,7 @@ static inline u32 inotify_mask_to_arg(__u32 mask)
 		       IN_Q_OVERFLOW);
 }
 
-/* intofiy userspace file descriptor functions */
+/* inotfiy userspace file descriptor functions */
 static unsigned int inotify_poll(struct file *file, poll_table *wait)
 {
 	struct fsnotify_group *group = file->private_data;
@@ -341,11 +341,11 @@ static const struct file_operations inotify_fops = {
 /*
  * find_inode - resolve a user-given path to a specific inode
  */
-static int inotify_find_inode(const char __user *dirname, struct path *path, unsigned flags)
+static int inotify_find_inode(int dfd, const char __user *dirname, struct path *path, unsigned flags)
 {
 	int error;
 
-	error = user_path_at(AT_FDCWD, dirname, flags, path);
+	error = user_path_at(dfd, dirname, flags, path);
 	if (error)
 		return error;
 	/* you can only watch an inode if you have read permissions on it */
@@ -732,8 +732,8 @@ SYSCALL_DEFINE0(inotify_init)
 	return sys_inotify_init1(0);
 }
 
-SYSCALL_DEFINE3(inotify_add_watch, int, fd, const char __user *, pathname,
-		u32, mask)
+SYSCALL_DEFINE4(inotify_add_watch_at, int, fd, int, dfd, const char __user *,
+		pathname, u32, mask)
 {
 	struct fsnotify_group *group;
 	struct inode *inode;
@@ -761,7 +761,7 @@ SYSCALL_DEFINE3(inotify_add_watch, int, fd, const char __user *, pathname,
 	if (mask & IN_ONLYDIR)
 		flags |= LOOKUP_DIRECTORY;
 
-	ret = inotify_find_inode(pathname, &path, flags);
+	ret = inotify_find_inode(dfd, pathname, &path, flags);
 	if (ret)
 		goto fput_and_out;
 
@@ -775,6 +775,12 @@ SYSCALL_DEFINE3(inotify_add_watch, int, fd, const char __user *, pathname,
 fput_and_out:
 	fdput(f);
 	return ret;
+}
+
+SYSCALL_DEFINE3(inotify_add_watch, int, fd, const char __user *, pathname,
+		u32, mask)
+{
+	return sys_inotify_add_watch_at(fd, AT_FDCWD, pathname, mask);
 }
 
 SYSCALL_DEFINE2(inotify_rm_watch, int, fd, __s32, wd)
