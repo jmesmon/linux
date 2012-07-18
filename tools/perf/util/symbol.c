@@ -1300,6 +1300,11 @@ static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
 				continue;
 		}
 
+		/* Ignore zero length symbols */
+		if (sym.st_size == 0) {
+			continue;
+		}
+
 		if (opdsec && sym.st_shndx == opdidx) {
 			u32 offset = sym.st_value - opdshdr.sh_addr;
 			u64 *opd = opddata->d_buf + offset;
