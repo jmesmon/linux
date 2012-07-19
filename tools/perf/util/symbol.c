@@ -1299,10 +1299,12 @@ static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
 				continue;
 		}
 
+#if 0
 		/* Ignore zero length symbols */
 		if (sym.st_size == 0) {
 			continue;
 		}
+#endif
 
 		if (opdsec && sym.st_shndx == opdidx) {
 			u32 offset = sym.st_value - opdshdr.sh_addr;
@@ -1384,6 +1386,19 @@ static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
 				  (u64)shdr.sh_offset);
 			sym.st_value -= shdr.sh_addr - shdr.sh_offset;
 		}
+
+		/* Ignore symbol outside of map */
+		{
+			u64 sym_end = sym.st_size ? sym.st_value + sym.st_size - 1 : sym.st_value;
+			if (sym.st_value > map->start || map->end < sym_end) {
+				pr_debug4("%s: symbol outside of map: st_value: %#" PRIx64 " "
+					  "sym_end: %#" PRIx64 "  map.start: %#" PRIx64 " "
+					  "map.end: %#" PRIx64 "\n" , __func__,
+					  (u64)sym.st_value, sym_end,
+					  map->start, map->end);
+			}
+		}
+
 		/*
 		 * We need to figure out if the object was created from C++ sources
 		 * DWARF DW_compile_unit has this, but we don't always have access
