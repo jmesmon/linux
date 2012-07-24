@@ -1183,25 +1183,46 @@ static int dso__swap_init(struct dso *dso, unsigned char eidata)
 	return 0;
 }
 
-static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
-			 int fd, symbol_filter_t filter, int kmodule,
-			 int want_symtab)
-{
-	struct kmap *kmap = dso->kernel ? map__kmap(map) : NULL;
-	struct map *curr_map = map;
-	struct dso *curr_dso = dso;
-	Elf_Data *symstrs, *secstrs;
-	uint32_t nr_syms;
-	int err = -1;
-	uint32_t idx;
-	GElf_Ehdr ehdr;
-	GElf_Shdr shdr, opdshdr;
-	Elf_Data *syms, *opddata = NULL;
-	GElf_Sym sym;
-	Elf_Scn *sec, *sec_strndx, *opdsec;
+struct symsrc {
 	Elf *elf;
-	int nr = 0;
-	size_t opdidx = 0;
+	GElf_Ehdr ehdr;
+
+	Elf_Scn *opdsec;
+	size_t opdidx;
+	GElf_Shdr opdshdr;
+
+	Elf_Scn *symtab;
+	GElf_Shdr symshdr;
+
+	char *name;
+	int fd;
+	char type;
+	char symtab_is_dynsym;
+	/* XXX: adjust_symbols ?? */
+};
+
+static void symsrc__destroy(struct symsrc *ss)
+{
+	free(ss->name);
+	elf_end(ss->elf);
+	close(ss->fd);
+}
+
+
+/* FIXME: check if symbol table is empty?? */
+static int symsrc__init(struct symsrc *ss, struct dso *dso, const char *name,
+		int type)
+{
+	int err = -1;
+	GElf_Ehdr ehdr;
+	GElf_Shdr shdr;
+	Elf_Scn *sec, *opdsec;
+	Elf *elf;
+	int fd;
+
+	fd = open(name, O_RDONLY);
+	if (fd < 0)
+		return -1;
 
 	elf = elf_begin(fd, PERF_ELF_C_READ_MMAP, NULL);
 	if (elf == NULL) {
@@ -1228,27 +1249,72 @@ static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
 			goto out_elf_end;
 	}
 
+	ss->symtab_is_dynsym = 0;
 	sec = elf_section_by_name(elf, &ehdr, &shdr, ".symtab", NULL);
 	if (sec == NULL) {
-		if (want_symtab)
-			goto out_elf_end;
-
+		ss->symtab_is_dynsym = 1;
 		sec = elf_section_by_name(elf, &ehdr, &shdr, ".dynsym", NULL);
 		if (sec == NULL)
 			goto out_elf_end;
 	}
 
-	opdsec = elf_section_by_name(elf, &ehdr, &opdshdr, ".opd", &opdidx);
-	if (opdshdr.sh_type != SHT_PROGBITS)
+	if (!shdr.sh_size)
+		goto out_elf_end;
+
+	ss->opdidx = 0;
+	opdsec = elf_section_by_name(elf, &ehdr, &ss->opdshdr, ".opd",
+			&ss->opdidx);
+	if (ss->opdshdr.sh_type != SHT_PROGBITS)
 		opdsec = NULL;
-	if (opdsec)
-		opddata = elf_rawdata(opdsec, NULL);
+
+	ss->name   = strdup(name);
+	if (!ss->name)
+		goto out_elf_end;
+
+	ss->elf    = elf;
+	ss->opdsec = opdsec;
+	ss->symtab = sec;
+	ss->fd     = fd;
+	ss->type   = type;
+	ss->ehdr   = ehdr;
+	ss->symshdr= shdr;
+
+	return 0;
+
+out_elf_end:
+	elf_end(elf);
+out_close:
+	close(fd);
+	return err;
+}
+
+static int dso__load_sym(struct dso *dso, struct map *map,
+			 symbol_filter_t filter, int kmodule,
+			 struct symsrc *ss, struct symsrc *opd_ss)
+{
+	struct kmap *kmap = dso->kernel ? map__kmap(map) : NULL;
+	struct map *curr_map = map;
+	struct dso *curr_dso = dso;
+	Elf_Data *symstrs, *secstrs;
+	uint32_t nr_syms;
+	int err = -1;
+	uint32_t idx;
+	GElf_Ehdr ehdr = ss->ehdr;
+	GElf_Shdr symtab_shdr = ss->symshdr;
+	Elf_Data *syms, *opddata = NULL;
+	GElf_Sym sym;
+	Elf_Scn *sec = ss->symtab, *sec_strndx;
+	Elf *elf = ss->elf;
+	int nr = 0;
+
+	if (opd_ss)
+		opddata = elf_rawdata(opd_ss->opdsec, NULL);
 
 	syms = elf_getdata(sec, NULL);
 	if (syms == NULL)
 		goto out_elf_end;
 
-	sec = elf_getscn(elf, shdr.sh_link);
+	sec = elf_getscn(elf, symtab_shdr.sh_link);
 	if (sec == NULL)
 		goto out_elf_end;
 
@@ -1264,10 +1330,11 @@ static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
 	if (secstrs == NULL)
 		goto out_elf_end;
 
-	nr_syms = shdr.sh_size / shdr.sh_entsize;
+	nr_syms = symtab_shdr.sh_size / symtab_shdr.sh_entsize;
 
 	memset(&sym, 0, sizeof(sym));
 	if (dso->kernel == DSO_TYPE_USER) {
+		GElf_Shdr shdr;
 		dso->adjust_symbols = (ehdr.e_type == ET_EXEC ||
 				elf_section_by_name(elf, &ehdr, &shdr,
 						     ".gnu.prelink_undo",
@@ -1281,6 +1348,7 @@ static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
 		char *demangled = NULL;
 		int is_label = elf_sym__is_label(&sym);
 		const char *section_name;
+		GElf_Shdr sym_shdr;
 
 		if (kmap && kmap->ref_reloc_sym && kmap->ref_reloc_sym->name &&
 		    strcmp(elf_name, kmap->ref_reloc_sym->name) == 0)
@@ -1306,8 +1374,8 @@ static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
 		}
 #endif
 
-		if (opdsec && sym.st_shndx == opdidx) {
-			u32 offset = sym.st_value - opdshdr.sh_addr;
+		if (opd_ss && sym.st_shndx == opd_ss->opdidx) {
+			u32 offset = sym.st_value - opd_ss->opdshdr.sh_addr;
 			u64 *opd = opddata->d_buf + offset;
 			sym.st_value = DSO__SWAP(dso, u64, *opd);
 			sym.st_shndx = elf_addr_to_index(elf, sym.st_value);
@@ -1317,12 +1385,12 @@ static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
 		if (!sec)
 			goto out_elf_end;
 
-		gelf_getshdr(sec, &shdr);
+		gelf_getshdr(sec, &sym_shdr);
 
-		if (is_label && !elf_sec__is_a(&shdr, secstrs, map->type))
+		if (is_label && !elf_sec__is_a(&sym_shdr, secstrs, map->type))
 			continue;
 
-		section_name = elf_sec__name(&shdr, secstrs);
+		section_name = elf_sec__name(&sym_shdr, secstrs);
 
 		/* On ARM, symbols for thumb functions have 1 added to
 		 * the symbol address as a flag - remove it */
@@ -1353,7 +1421,7 @@ static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
 				u64 start = sym.st_value;
 
 				if (kmodule)
-					start += map->start + shdr.sh_offset;
+					start += map->start + sym_shdr.sh_offset;
 
 				curr_dso = dso__new(dso_name);
 				if (curr_dso == NULL)
@@ -1382,9 +1450,9 @@ static int dso__load_sym(struct dso *dso, struct map *map, const char *name,
 		if (curr_dso->adjust_symbols && sym.st_value) {
 			pr_debug4("%s: adjusting symbol: st_value: %#" PRIx64 " "
 				  "sh_addr: %#" PRIx64 " sh_offset: %#" PRIx64 "\n", __func__,
-				  (u64)sym.st_value, (u64)shdr.sh_addr,
-				  (u64)shdr.sh_offset);
-			sym.st_value -= shdr.sh_addr - shdr.sh_offset;
+				  (u64)sym.st_value, (u64)sym_shdr.sh_addr,
+				  (u64)sym_shdr.sh_offset);
+			sym.st_value -= sym_shdr.sh_addr - sym_shdr.sh_offset;
 		}
 
 		/* Ignore symbol outside of map */
@@ -1438,9 +1506,29 @@ new_symbol:
 	}
 	err = nr;
 out_elf_end:
-	elf_end(elf);
-out_close:
 	return err;
+}
+
+static int dso__load_sym_from_file(struct dso *dso, struct map *map, char *name,
+				   symbol_filter_t filter, int kmodule)
+{
+	struct symsrc ss, *opd_ss = NULL;
+	int ret;
+	int fd = open(name, O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	/* TODO: create ss & opd ss */
+	ret = symsrc__init(&ss, dso, name, 0);
+	if (ret < 0)
+		return -1;
+
+	if (ss.opdsec)
+		opd_ss = &ss;
+
+	ret = dso__load_sym(dso, map, filter, kmodule, &ss, opd_ss);
+	symsrc__destroy(&ss);
+	return ret;
 }
 
 static bool dso__build_id_equal(const struct dso *dso, u8 *build_id)
@@ -1773,9 +1861,11 @@ int dso__load(struct dso *dso, struct map *map, symbol_filter_t filter)
 	int size = PATH_MAX;
 	char *name;
 	int ret = -1;
-	int fd;
 	struct machine *machine;
-	int want_symtab;
+	int ss_pos = 0;
+	int next_slot;
+	struct symsrc ss_[3];
+	struct symsrc *syms = NULL, *opd = NULL;
 
 	dso__set_loaded(dso, map->type);
 
@@ -1817,48 +1907,62 @@ int dso__load(struct dso *dso, struct map *map, symbol_filter_t filter)
 	 * On the first pass, only load images if they have a full symtab.
 	 * Failing that, do a second pass where we accept .dynsym also
 	 */
-	want_symtab = 1;
-restart:
 	for (dso->symtab_type = SYMTAB__DEBUGLINK;
 	     dso->symtab_type != SYMTAB__NOT_FOUND;
 	     dso->symtab_type++) {
+		struct symsrc *ss = &ss_[ss_pos];
+		next_slot = 0;
 
 		if (dso__symtab_path(dso, map, machine, name, size))
 			continue;
 
-		/* Name is now the name of the next image to try */
-		fd = open(name, O_RDONLY);
-		if (fd < 0)
+		ret = symsrc__init(ss, dso, name, dso->symtab_type);
+		if (ret < 0)
 			continue;
 
-		ret = dso__load_sym(dso, map, name, fd, filter, 0,
-				    want_symtab);
-		close(fd);
+		if (ss->symtab) {
+			if (!syms) {
+				syms = ss;
+				next_slot = 1;
+			} else if (!ss->symtab_is_dynsym &&
+					syms->symtab_is_dynsym) {
+				syms = ss;
+				next_slot = 1;
+			}
+		}
 
-		/*
-		 * Some people seem to have debuginfo files _WITHOUT_ debug
-		 * info!?!?
-		 */
-		if (!ret)
-			continue;
+		if (ss->opdsec && !opd) {
+			opd = ss;
+			next_slot = 1;
+		}
 
-		if (ret > 0) {
-			int nr_plt;
+		if (next_slot) {
+			ss_pos++;
 
-			nr_plt = dso__synthesize_plt_symbols(dso, name, map, filter);
-			if (nr_plt > 0)
-				ret += nr_plt;
-			break;
+			if (syms && !syms->symtab_is_dynsym && opd)
+				break;
+			if (ss_pos == ARRAY_SIZE(ss_))
+				break;
+		} else {
+			symsrc__destroy(ss);
 		}
 	}
 
-	/*
-	 * If we wanted a full symtab but no image had one,
-	 * relax our requirements and repeat the search.
-	 */
-	if (ret <= 0 && want_symtab) {
-		want_symtab = 0;
-		goto restart;
+	if (syms)
+		ret = dso__load_sym(dso, map, filter, 0, syms, opd);
+	else
+		ret = -1;
+
+	for (ss_pos++; ss_pos > 0; ss_pos--)
+		symsrc__destroy(&ss_[ss_pos-1]);
+
+	/* XXX: can't try again */
+	if (ret > 0) {
+		int nr_plt;
+
+		nr_plt = dso__synthesize_plt_symbols(dso, name, map, filter);
+		if (nr_plt > 0)
+			ret += nr_plt;
 	}
 
 	free(name);
@@ -2119,19 +2223,15 @@ out_failure:
 int dso__load_vmlinux(struct dso *dso, struct map *map,
 		      const char *vmlinux, symbol_filter_t filter)
 {
-	int err = -1, fd;
+	int err = -1;
 	char symfs_vmlinux[PATH_MAX];
 
 	snprintf(symfs_vmlinux, sizeof(symfs_vmlinux), "%s%s",
 		 symbol_conf.symfs, vmlinux);
-	fd = open(symfs_vmlinux, O_RDONLY);
-	if (fd < 0)
-		return -1;
 
 	dso__set_long_name(dso, (char *)vmlinux);
 	dso__set_loaded(dso, map->type);
-	err = dso__load_sym(dso, map, symfs_vmlinux, fd, filter, 0, 0);
-	close(fd);
+	err = dso__load_sym_from_file(dso, map, symfs_vmlinux, filter, 0);
 
 	if (err > 0)
 		pr_debug("Using %s for symbols\n", symfs_vmlinux);
