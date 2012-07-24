@@ -1697,6 +1697,77 @@ char dso__symtab_origin(const struct dso *dso)
 	return origin[dso->symtab_type];
 }
 
+/* XXX: machine & dso are pointed to from map */
+static int dso__symtab_path(struct dso *dso, struct map *map,
+		struct machine *machine, char *name, size_t size)
+{
+	const char *root_dir;
+	switch (dso->symtab_type) {
+	case SYMTAB__DEBUGLINK: {
+		char *debuglink;
+		strncpy(name, dso->long_name, size);
+		debuglink = name + dso->long_name_len;
+		while (debuglink != name && *debuglink != '/')
+			debuglink--;
+		if (*debuglink == '/')
+			debuglink++;
+		filename__read_debuglink(dso->long_name, debuglink,
+					 size - (debuglink - name));
+		}
+		break;
+	case SYMTAB__BUILD_ID_CACHE:
+		/* skip the locally configured cache if a symfs is given */
+		if (symbol_conf.symfs[0] ||
+		    (dso__build_id_filename(dso, name, size) == NULL)) {
+			return 1;
+		}
+		break;
+	case SYMTAB__FEDORA_DEBUGINFO:
+		snprintf(name, size, "%s/usr/lib/debug%s.debug",
+			 symbol_conf.symfs, dso->long_name);
+		break;
+	case SYMTAB__UBUNTU_DEBUGINFO:
+		snprintf(name, size, "%s/usr/lib/debug%s",
+			 symbol_conf.symfs, dso->long_name);
+		break;
+	case SYMTAB__BUILDID_DEBUGINFO: {
+		char build_id_hex[BUILD_ID_SIZE * 2 + 1];
+
+		if (!dso->has_build_id)
+			return 1;
+
+		build_id__sprintf(dso->build_id,
+				  sizeof(dso->build_id),
+				  build_id_hex);
+		snprintf(name, size,
+			 "%s/usr/lib/debug/.build-id/%.2s/%s.debug",
+			 symbol_conf.symfs, build_id_hex, build_id_hex + 2);
+		}
+		break;
+	case SYMTAB__SYSTEM_PATH_DSO:
+		snprintf(name, size, "%s%s",
+		     symbol_conf.symfs, dso->long_name);
+		break;
+	case SYMTAB__GUEST_KMODULE:
+		if (map->groups && machine)
+			root_dir = machine->root_dir;
+		else
+			root_dir = "";
+		snprintf(name, size, "%s%s%s", symbol_conf.symfs,
+			 root_dir, dso->long_name);
+		break;
+
+	case SYMTAB__SYSTEM_PATH_KMODULE:
+		snprintf(name, size, "%s%s", symbol_conf.symfs,
+			 dso->long_name);
+		break;
+	default:
+		;
+	}
+
+	return 0;
+}
+
 int dso__load(struct dso *dso, struct map *map, symbol_filter_t filter)
 {
 	int size = PATH_MAX;
@@ -1704,7 +1775,6 @@ int dso__load(struct dso *dso, struct map *map, symbol_filter_t filter)
 	int ret = -1;
 	int fd;
 	struct machine *machine;
-	const char *root_dir;
 	int want_symtab;
 
 	dso__set_loaded(dso, map->type);
@@ -1752,67 +1822,9 @@ restart:
 	for (dso->symtab_type = SYMTAB__DEBUGLINK;
 	     dso->symtab_type != SYMTAB__NOT_FOUND;
 	     dso->symtab_type++) {
-		switch (dso->symtab_type) {
-		case SYMTAB__DEBUGLINK: {
-			char *debuglink;
-			strncpy(name, dso->long_name, size);
-			debuglink = name + dso->long_name_len;
-			while (debuglink != name && *debuglink != '/')
-				debuglink--;
-			if (*debuglink == '/')
-				debuglink++;
-			filename__read_debuglink(dso->long_name, debuglink,
-						 size - (debuglink - name));
-			}
-			break;
-		case SYMTAB__BUILD_ID_CACHE:
-			/* skip the locally configured cache if a symfs is given */
-			if (symbol_conf.symfs[0] ||
-			    (dso__build_id_filename(dso, name, size) == NULL)) {
-				continue;
-			}
-			break;
-		case SYMTAB__FEDORA_DEBUGINFO:
-			snprintf(name, size, "%s/usr/lib/debug%s.debug",
-				 symbol_conf.symfs, dso->long_name);
-			break;
-		case SYMTAB__UBUNTU_DEBUGINFO:
-			snprintf(name, size, "%s/usr/lib/debug%s",
-				 symbol_conf.symfs, dso->long_name);
-			break;
-		case SYMTAB__BUILDID_DEBUGINFO: {
-			char build_id_hex[BUILD_ID_SIZE * 2 + 1];
 
-			if (!dso->has_build_id)
-				continue;
-
-			build_id__sprintf(dso->build_id,
-					  sizeof(dso->build_id),
-					  build_id_hex);
-			snprintf(name, size,
-				 "%s/usr/lib/debug/.build-id/%.2s/%s.debug",
-				 symbol_conf.symfs, build_id_hex, build_id_hex + 2);
-			}
-			break;
-		case SYMTAB__SYSTEM_PATH_DSO:
-			snprintf(name, size, "%s%s",
-			     symbol_conf.symfs, dso->long_name);
-			break;
-		case SYMTAB__GUEST_KMODULE:
-			if (map->groups && machine)
-				root_dir = machine->root_dir;
-			else
-				root_dir = "";
-			snprintf(name, size, "%s%s%s", symbol_conf.symfs,
-				 root_dir, dso->long_name);
-			break;
-
-		case SYMTAB__SYSTEM_PATH_KMODULE:
-			snprintf(name, size, "%s%s", symbol_conf.symfs,
-				 dso->long_name);
-			break;
-		default:;
-		}
+		if (dso__symtab_path(dso, map, machine, name, size))
+			continue;
 
 		/* Name is now the name of the next image to try */
 		fd = open(name, O_RDONLY);
