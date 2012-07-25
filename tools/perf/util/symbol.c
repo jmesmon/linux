@@ -1375,7 +1375,7 @@ static int dso__load_sym(struct dso *dso, struct map *map,
 #endif
 
 		if (opd_ss && sym.st_shndx == opd_ss->opdidx) {
-			u32 offset = sym.st_value - opd_ss->opdshdr.sh_addr;
+			u32 offset = sym.st_value - sym_shdr.sh_addr;
 			u64 *opd = opddata->d_buf + offset;
 			sym.st_value = DSO__SWAP(dso, u64, *opd);
 			sym.st_shndx = elf_addr_to_index(elf, sym.st_value);
