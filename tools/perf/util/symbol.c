@@ -1320,8 +1320,7 @@ static size_t elf_addr_to_index(Elf *elf, GElf_Addr addr)
 }
 
 static int dso__load_sym(struct dso *dso, struct map *map, struct symsrc *ss,
-		         symbol_filter_t filter, int kmodule,
-			 int want_symtab)
+		         symbol_filter_t filter, int kmodule)
 {
 	struct kmap *kmap = dso->kernel ? map__kmap(map) : NULL;
 	struct map *curr_map = map;
@@ -1345,16 +1344,6 @@ static int dso__load_sym(struct dso *dso, struct map *map, struct symsrc *ss,
 	ehdr = ss->ehdr;
 	sec = ss->symtab;
 	shdr = ss->symshdr;
-
-	if (sec == NULL) {
-		if (want_symtab)
-			goto out_elf_end;
-
-		sec  = ss->dynsym;
-		shdr = ss->dynshdr;
-		if (sec == NULL)
-			goto out_elf_end;
-	}
 
 	opdsec = ss->opdsec;
 	opdshdr = ss->opdshdr;
@@ -1947,8 +1936,15 @@ restart:
 		if (symsrc__init(&ss, dso, name, symtab_type) < 0)
 			continue;
 
-		ret = dso__load_sym(dso, map, &ss, filter, 0,
-				    want_symtab);
+		if (want_symtab && !ss.symtab) {
+			symsrc__destroy(&ss);
+			continue;
+		} else if (!want_symtab) {
+			ss.symtab  = ss.dynsym;
+			ss.symshdr = ss.dynshdr;
+		}
+
+		ret = dso__load_sym(dso, map, &ss, filter, 0);
 
 		/*
 		 * Some people seem to have debuginfo files _WITHOUT_ debug
@@ -2253,7 +2249,7 @@ int dso__load_vmlinux(struct dso *dso, struct map *map,
 	if (symsrc__init(&ss, dso, symfs_vmlinux, symtab_type))
 		return -1;
 
-	err = dso__load_sym(dso, map, &ss, filter, 0, 0);
+	err = dso__load_sym(dso, map, &ss, filter, 0);
 	symsrc__destroy(&ss);
 
 	if (err > 0) {
