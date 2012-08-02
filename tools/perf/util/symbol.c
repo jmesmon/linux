@@ -1149,7 +1149,7 @@ out_close:
  * have the PLT data stripped out (shdr_rel_plt.sh_type == SHT_NOBITS).
  */
 static int
-dso__synthesize_plt_symbols(struct dso *dso, char *name, struct map *map,
+dso__synthesize_plt_symbols(struct dso *dso, struct symsrc *ss, struct map *map,
 			    symbol_filter_t filter)
 {
 	uint32_t nr_rel_entries, idx;
@@ -1164,21 +1164,15 @@ dso__synthesize_plt_symbols(struct dso *dso, char *name, struct map *map,
 	GElf_Ehdr ehdr;
 	char sympltname[1024];
 	Elf *elf;
-	int nr = 0, symidx, fd, err = 0;
+	int nr = 0, symidx, err = 0;
 
-	fd = open(name, O_RDONLY);
-	if (fd < 0)
-		goto out;
+	elf = ss->elf;
+	ehdr = ss->ehdr;
 
-	elf = elf_begin(fd, PERF_ELF_C_READ_MMAP, NULL);
-	if (elf == NULL)
-		goto out_close;
+	scn_dynsym = ss->dynsym;
+	shdr_dynsym = ss->dynshdr;
+	dynsym_idx = ss->dynsym_idx;
 
-	if (gelf_getehdr(elf, &ehdr) == NULL)
-		goto out_elf_end;
-
-	scn_dynsym = elf_section_by_name(elf, &ehdr, &shdr_dynsym,
-					 ".dynsym", &dynsym_idx);
 	if (scn_dynsym == NULL)
 		goto out_elf_end;
 
@@ -1274,13 +1268,8 @@ dso__synthesize_plt_symbols(struct dso *dso, char *name, struct map *map,
 
 	err = 0;
 out_elf_end:
-	elf_end(elf);
-out_close:
-	close(fd);
-
 	if (err == 0)
 		return nr;
-out:
 	pr_debug("%s: problems reading %s PLT info.\n",
 		 __func__, dso->long_name);
 	return 0;
@@ -1960,21 +1949,23 @@ restart:
 
 		ret = dso__load_sym(dso, map, &ss, filter, 0,
 				    want_symtab);
-		symsrc__destroy(&ss);
 
 		/*
 		 * Some people seem to have debuginfo files _WITHOUT_ debug
 		 * info!?!?
 		 */
-		if (!ret)
+		if (!ret) {
+			symsrc__destroy(&ss);
 			continue;
+		}
 
 		if (ret > 0) {
 			int nr_plt;
 
-			nr_plt = dso__synthesize_plt_symbols(dso, name, map, filter);
+			nr_plt = dso__synthesize_plt_symbols(dso, &ss, map, filter);
 			if (nr_plt > 0)
 				ret += nr_plt;
+			symsrc__destroy(&ss);
 			break;
 		}
 	}
