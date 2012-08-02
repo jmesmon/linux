@@ -989,6 +989,144 @@ static Elf_Scn *elf_section_by_name(Elf *elf, GElf_Ehdr *ep,
 	return sec;
 }
 
+static int dso__swap_init(struct dso *dso, unsigned char eidata)
+{
+	static unsigned int const endian = 1;
+
+	dso->needs_swap = DSO_SWAP__NO;
+
+	switch (eidata) {
+	case ELFDATA2LSB:
+		/* We are big endian, DSO is little endian. */
+		if (*(unsigned char const *)&endian != 1)
+			dso->needs_swap = DSO_SWAP__YES;
+		break;
+
+	case ELFDATA2MSB:
+		/* We are little endian, DSO is big endian. */
+		if (*(unsigned char const *)&endian != 0)
+			dso->needs_swap = DSO_SWAP__YES;
+		break;
+
+	default:
+		pr_err("unrecognized DSO data encoding %d\n", eidata);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+struct symsrc {
+	Elf *elf;
+	GElf_Ehdr ehdr;
+
+	Elf_Scn *opdsec;
+	size_t opdidx;
+	GElf_Shdr opdshdr;
+
+	Elf_Scn *symtab;
+	GElf_Shdr symshdr;
+
+	Elf_Scn *dynsym;
+	size_t dynsym_idx;
+	GElf_Shdr dynshdr;
+
+	char *name;
+	int fd;
+	enum dso_binary_type type;
+
+	bool adjust_symbols;
+};
+
+static void symsrc__destroy(struct symsrc *ss)
+{
+	free(ss->name);
+	elf_end(ss->elf);
+	close(ss->fd);
+}
+
+static int symsrc__init(struct symsrc *ss, struct dso *dso, const char *name,
+	enum dso_binary_type type)
+{
+	int err = -1;
+	GElf_Ehdr ehdr;
+	Elf *elf;
+	int fd;
+
+	fd = open(name, O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	elf = elf_begin(fd, PERF_ELF_C_READ_MMAP, NULL);
+	if (elf == NULL) {
+		pr_debug("%s: cannot read %s ELF file.\n", __func__, name);
+		goto out_close;
+	}
+
+	if (gelf_getehdr(elf, &ehdr) == NULL) {
+		pr_debug("%s: cannot get elf header.\n", __func__);
+		goto out_elf_end;
+	}
+
+	if (dso__swap_init(dso, ehdr.e_ident[EI_DATA]))
+		goto out_elf_end;
+
+	/* Always reject images with a mismatched build-id: */
+	if (dso->has_build_id) {
+		u8 build_id[BUILD_ID_SIZE];
+
+		if (elf_read_build_id(elf, build_id, BUILD_ID_SIZE) < 0)
+			goto out_elf_end;
+
+		if (!dso__build_id_equal(dso, build_id))
+			goto out_elf_end;
+	}
+
+	ss->symtab = elf_section_by_name(elf, &ehdr, &ss->symshdr, ".symtab",
+			NULL);
+	if (ss->symshdr.sh_type != SHT_SYMTAB)
+		ss->symtab = NULL;
+
+	ss->dynsym_idx = 0;
+	ss->dynsym = elf_section_by_name(elf, &ehdr, &ss->dynshdr, ".dynsym",
+			&ss->dynsym_idx);
+	if (ss->dynshdr.sh_type != SHT_DYNSYM)
+		ss->dynsym = NULL;
+
+	ss->opdidx = 0;
+	ss->opdsec = elf_section_by_name(elf, &ehdr, &ss->opdshdr, ".opd",
+			&ss->opdidx);
+	if (ss->opdshdr.sh_type != SHT_PROGBITS)
+		ss->opdsec = NULL;
+
+	if (dso->kernel == DSO_TYPE_USER) {
+		GElf_Shdr shdr;
+		ss->adjust_symbols = (ehdr.e_type == ET_EXEC ||
+				elf_section_by_name(elf, &ehdr, &shdr,
+						     ".gnu.prelink_undo",
+						     NULL) != NULL);
+	} else {
+		ss->adjust_symbols = 0;
+	}
+
+	ss->name   = strdup(name);
+	if (!ss->name)
+		goto out_elf_end;
+
+	ss->elf    = elf;
+	ss->fd     = fd;
+	ss->ehdr   = ehdr;
+	ss->type   = type;
+
+	return 0;
+
+out_elf_end:
+	elf_end(elf);
+out_close:
+	close(fd);
+	return err;
+}
+
 #define elf_section__for_each_rel(reldata, pos, pos_mem, idx, nr_entries) \
 	for (idx = 0, pos = gelf_getrel(reldata, 0, &pos_mem); \
 	     idx < nr_entries; \
@@ -1186,144 +1324,6 @@ static size_t elf_addr_to_index(Elf *elf, GElf_Addr addr)
 	}
 
 	return -1;
-}
-
-static int dso__swap_init(struct dso *dso, unsigned char eidata)
-{
-	static unsigned int const endian = 1;
-
-	dso->needs_swap = DSO_SWAP__NO;
-
-	switch (eidata) {
-	case ELFDATA2LSB:
-		/* We are big endian, DSO is little endian. */
-		if (*(unsigned char const *)&endian != 1)
-			dso->needs_swap = DSO_SWAP__YES;
-		break;
-
-	case ELFDATA2MSB:
-		/* We are little endian, DSO is big endian. */
-		if (*(unsigned char const *)&endian != 0)
-			dso->needs_swap = DSO_SWAP__YES;
-		break;
-
-	default:
-		pr_err("unrecognized DSO data encoding %d\n", eidata);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-struct symsrc {
-	Elf *elf;
-	GElf_Ehdr ehdr;
-
-	Elf_Scn *opdsec;
-	size_t opdidx;
-	GElf_Shdr opdshdr;
-
-	Elf_Scn *symtab;
-	GElf_Shdr symshdr;
-
-	Elf_Scn *dynsym;
-	size_t dynsym_idx;
-	GElf_Shdr dynshdr;
-
-	char *name;
-	int fd;
-	enum dso_binary_type type;
-
-	bool adjust_symbols;
-};
-
-static void symsrc__destroy(struct symsrc *ss)
-{
-	free(ss->name);
-	elf_end(ss->elf);
-	close(ss->fd);
-}
-
-static int symsrc__init(struct symsrc *ss, struct dso *dso, const char *name,
-	enum dso_binary_type type)
-{
-	int err = -1;
-	GElf_Ehdr ehdr;
-	Elf *elf;
-	int fd;
-
-	fd = open(name, O_RDONLY);
-	if (fd < 0)
-		return -1;
-
-	elf = elf_begin(fd, PERF_ELF_C_READ_MMAP, NULL);
-	if (elf == NULL) {
-		pr_debug("%s: cannot read %s ELF file.\n", __func__, name);
-		goto out_close;
-	}
-
-	if (gelf_getehdr(elf, &ehdr) == NULL) {
-		pr_debug("%s: cannot get elf header.\n", __func__);
-		goto out_elf_end;
-	}
-
-	if (dso__swap_init(dso, ehdr.e_ident[EI_DATA]))
-		goto out_elf_end;
-
-	/* Always reject images with a mismatched build-id: */
-	if (dso->has_build_id) {
-		u8 build_id[BUILD_ID_SIZE];
-
-		if (elf_read_build_id(elf, build_id, BUILD_ID_SIZE) < 0)
-			goto out_elf_end;
-
-		if (!dso__build_id_equal(dso, build_id))
-			goto out_elf_end;
-	}
-
-	ss->symtab = elf_section_by_name(elf, &ehdr, &ss->symshdr, ".symtab",
-			NULL);
-	if (ss->symshdr.sh_type != SHT_SYMTAB)
-		ss->symtab = NULL;
-
-	ss->dynsym_idx = 0;
-	ss->dynsym = elf_section_by_name(elf, &ehdr, &ss->dynshdr, ".dynsym",
-			&ss->dynsym_idx);
-	if (ss->dynshdr.sh_type != SHT_DYNSYM)
-		ss->dynsym = NULL;
-
-	ss->opdidx = 0;
-	ss->opdsec = elf_section_by_name(elf, &ehdr, &ss->opdshdr, ".opd",
-			&ss->opdidx);
-	if (ss->opdshdr.sh_type != SHT_PROGBITS)
-		ss->opdsec = NULL;
-
-	if (dso->kernel == DSO_TYPE_USER) {
-		GElf_Shdr shdr;
-		ss->adjust_symbols = (ehdr.e_type == ET_EXEC ||
-				elf_section_by_name(elf, &ehdr, &shdr,
-						     ".gnu.prelink_undo",
-						     NULL) != NULL);
-	} else {
-		ss->adjust_symbols = 0;
-	}
-
-	ss->name   = strdup(name);
-	if (!ss->name)
-		goto out_elf_end;
-
-	ss->elf    = elf;
-	ss->fd     = fd;
-	ss->ehdr   = ehdr;
-	ss->type   = type;
-
-	return 0;
-
-out_elf_end:
-	elf_end(elf);
-out_close:
-	close(fd);
-	return err;
 }
 
 static int dso__load_sym(struct dso *dso, struct map *map, struct symsrc *ss,
