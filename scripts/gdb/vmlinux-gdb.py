@@ -24,3 +24,4 @@ else:
 	import utils
 	import symbols
 	import module
+	import dmesg
