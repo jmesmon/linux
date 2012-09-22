@@ -20,3 +20,5 @@ from utils import gdb_version
 if gdb_version < "7.1":
 	print "NOTE: gdb 7.1 or later required for Linux helper scripts " \
 	      "to work."
+else:
+	import utils
