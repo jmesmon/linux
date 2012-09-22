@@ -22,3 +22,4 @@ if gdb_version < "7.1":
 	      "to work."
 else:
 	import utils
+	import symbols
