@@ -26,3 +26,4 @@ else:
 	import module
 	import dmesg
 	import task
+	import percpu
