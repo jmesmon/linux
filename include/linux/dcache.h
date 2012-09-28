@@ -26,10 +26,12 @@ struct vfsmount;
 #define IS_ROOT(x) ((x) == (x)->d_parent)
 
 /* The hash is always the low bits of hash_len */
-#ifdef __LITTLE_ENDIAN
+#if defined(__LITTLE_ENDIAN)
  #define HASH_LEN_DECLARE u32 hash; u32 len;
-#else
+#elif defined(__BIG_ENDIAN)
  #define HASH_LEN_DECLARE u32 len; u32 hash;
+#else
+ #error "dcache: unsupported endian."
 #endif
 
 /*
@@ -49,7 +51,7 @@ struct qstr {
 	const unsigned char *name;
 };
 
-#define QSTR_INIT(n,l) { { { .len = l } }, .name = n }
+#define QSTR_INIT(n, l) { { .hash_len = ((u64)((u32)l) << 32) }, .name = n }
 #define hashlen_hash(hashlen) ((u32) (hashlen))
 #define hashlen_len(hashlen)  ((u32)((hashlen) >> 32))
 
