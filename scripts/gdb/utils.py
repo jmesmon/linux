@@ -121,3 +121,38 @@ def is_target_arch(arch):
 	if target_arch == None:
 		target_arch = gdb.execute("show architecture", False, True)
 	return target_arch.find(arch) >= 0
+
+
+GDBSERVER_QEMU = 0
+GDBSERVER_KGDB = 1
+gdbserver_type = None
+
+def get_gdbserver_type():
+	def exit_handler(event):
+		global gdbserver_type
+		gdbserver_type = None
+		gdb.events.exited.disconnect(exit_handler)
+
+	def probe_qemu():
+		try:
+			return gdb.execute("monitor info version", False,
+					   True) != ""
+		except:
+			return False
+
+	def probe_kgdb():
+		try:
+			thread_info = gdb.execute("info thread 2", False, True)
+			return thread_info.find("shadowCPU0") >= 0
+		except:
+			return False
+
+	global gdbserver_type
+	if gdbserver_type == None:
+		if probe_qemu():
+			gdbserver_type = GDBSERVER_QEMU
+		elif probe_kgdb():
+			gdbserver_type = GDBSERVER_KGDB
+		if gdbserver_type != None:
+			gdb.events.exited.connect(exit_handler)
+	return gdbserver_type
