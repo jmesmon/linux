@@ -25,3 +25,4 @@ else:
 	import symbols
 	import module
 	import dmesg
+	import task

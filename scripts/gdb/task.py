@@ -33,3 +33,32 @@ def for_each_task(func, arg = None):
 					 task_ptr_type, "thread_group")
 			if t == g:
 				break
+
+def get_task_by_pid(pid):
+	def match_pid(t, arg):
+		if int(t['pid']) == arg['pid']:
+			arg['task'] = t
+
+	arg = { 'pid': pid, 'task': None }
+	for_each_task(match_pid, arg)
+
+	return arg['task']
+
+
+class LxTaskByPidFunc(gdb.Function):
+	__doc__ = "Find Linux task by PID and return the task_struct variable.\n" \
+		  "\n" \
+		  "$lx_task_by_pid(PID): Given PID, iterate over all tasks of the target and\n" \
+		  "return that task_struct variable which PID matches."
+
+	def __init__(self):
+		super(LxTaskByPidFunc, self).__init__("lx_task_by_pid")
+
+	def invoke(self, pid):
+		task = get_task_by_pid(pid)
+		if task:
+			return task.dereference()
+		else:
+			raise gdb.GdbError("No task of PID " + str(pid))
+
+LxTaskByPidFunc()
