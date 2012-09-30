@@ -59,3 +59,19 @@ class PerCpu(gdb.Function):
 		return per_cpu(var_ptr, cpu)
 
 PerCpu()
+
+
+class LxCurrentFunc(gdb.Function):
+	__doc__ = "Return current task.\n" \
+		  "\n" \
+		  "$lx_current([CPU]): Return the per-cpu task variable for the given CPU\n" \
+		  "number. If CPU is omitted, the CPU of the current context is used."
+
+	def __init__(self):
+		super(LxCurrentFunc, self).__init__("lx_current")
+
+	def invoke(self, cpu = -1):
+		var_ptr = gdb.parse_and_eval("&current_task")
+		return per_cpu(var_ptr, cpu).dereference()
+
+LxCurrentFunc()
