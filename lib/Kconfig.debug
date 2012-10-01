@@ -835,7 +835,7 @@ config DEBUG_WRITECOUNT
 
 config DEBUG_MEMORY_INIT
 	bool "Debug memory initialisation" if EXPERT
-	default !EXPERT
+	default y if !EXPERT
 	help
 	  Enable this for additional checks during memory initialisation.
 	  The sanity checks verify aspects of the VM such as the memory model
