@@ -765,7 +765,7 @@ int simple_attr_open(struct inode *inode, struct file *file,
 
 	file->private_data = attr;
 
-	return nonseekable_open(inode, file);
+	return 0;
 }
 
 int simple_attr_release(struct inode *inode, struct file *file)
