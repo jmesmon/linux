@@ -205,6 +205,24 @@ static inline void fsnotify_access(struct file *file)
 }
 
 /*
+ * fsnotify_modify_dentry - dentry/inode was modified.
+ *
+ * Should only be called due to changes originating in the kernel (such as in
+ * one of it's virtual filesystems, ie: proc, sysfs, debugfs)
+ */
+static inline void fsnotify_modify_dentry(struct dentry *dentry)
+{
+	struct inode *inode = dentry->d_inode;
+	__u32 mask = FS_MODIFY;
+
+	if (S_ISDIR(inode->i_mode))
+		mask |= FS_ISDIR;
+
+	fsnotify_parent(NULL, dentry, mask);
+	fsnotify(inode, mask, inode, FSNOTIFY_EVENT_INODE, NULL, 0);
+}
+
+/*
  * fsnotify_modify - file was modified
  */
 static inline void fsnotify_modify(struct file *file)
