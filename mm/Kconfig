@@ -143,6 +143,12 @@ config NO_BOOTMEM
 config MEMORY_ISOLATION
 	boolean
 
+# This doesn't quite require memory_hotplug, but it does require
+# the additional locking in 'sturct page' provided by memory hotplug.
+config DYNAMIC_NUMA
+	bool "Allow NUMA layout to change dynamically"
+	#select MEMORY_HOTPLUG
+
 # eventually, we can have this option just 'select SPARSEMEM'
 config MEMORY_HOTPLUG
 	bool "Allow for memory hot-add"
