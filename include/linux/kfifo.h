@@ -23,7 +23,7 @@
 #define _LINUX_KFIFO_H
 
 /*
- * How to porting drivers to the new generic FIFO API:
+ * How to port drivers to the new generic FIFO API:
  *
  * - Modify the declaration of the "struct kfifo *" object into a
  *   in-place "struct kfifo" object
@@ -41,13 +41,14 @@
  */
 
 /*
- * Note about locking : There is no locking required until only * one reader
- * and one writer is using the fifo and no kfifo_reset() will be * called
- *  kfifo_reset_out() can be safely used, until it will be only called
- * in the reader thread.
- *  For multiple writer and one reader there is only a need to lock the writer.
- * And vice versa for only one writer and multiple reader there is only a need
- * to lock the reader.
+ * Notes about locking :
+ * - Beware kfifo_reset(): it requires syncronization.
+ * - For one reader and one writer [given that there are no calls to
+ *   kfifo_reset()], no locking is required. kfifo_reset_out() can be safely
+ *   used if it is only called in the reader thread.
+ * - For multiple writers and one reader only the writer needs locking.
+ * - For one writer and multiple readers only the reader needs locking.
+ * XXX: what does using kfifo_reset() imply about locking?
  */
 
 #include <linux/kernel.h>
@@ -215,7 +216,7 @@ __kfifo_int_must_check_helper(int val)
  * @fifo: address of the fifo to be used
  *
  * Note: usage of kfifo_reset() is dangerous. It should be only called when the
- * fifo is exclusived locked or when it is secured that no other thread is
+ * fifo is exclusived locked or when it is certain that no other thread is
  * accessing the fifo.
  */
 #define kfifo_reset(fifo) \
@@ -228,7 +229,7 @@ __kfifo_int_must_check_helper(int val)
  * kfifo_reset_out - skip fifo content
  * @fifo: address of the fifo to be used
  *
- * Note: The usage of kfifo_reset_out() is safe until it will be only called
+ * Note: The usage of kfifo_reset_out() is safe if it will be only called
  * from the reader thread and there is only one concurrent reader. Otherwise
  * it is dangerous and must be handled in the same way as kfifo_reset().
  */
