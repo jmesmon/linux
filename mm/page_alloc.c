@@ -58,6 +58,7 @@
 #include <linux/prefetch.h>
 #include <linux/migrate.h>
 #include <linux/page-debug-flags.h>
+#include <linux/dnuma.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -253,8 +254,10 @@ static int page_is_consistent(struct zone *zone, struct page *page)
 {
 	if (!pfn_valid_within(page_to_pfn(page)))
 		return 0;
+#ifndef CONFIG_DYNAMIC_NUMA
 	if (zone != page_zone(page))
 		return 0;
+#endif
 
 	return 1;
 }
@@ -484,6 +487,13 @@ static inline int page_is_buddy(struct page *page, struct page *buddy,
 
 	if (page_zone_id(page) != page_zone_id(buddy))
 		return 0;
+
+#ifdef CONFIG_DYNAMIC_NUMA /* implies !defined(NODE_NOT_IN_PAGE_FLAGS) */
+	/* necissary to prevent unintended movement of nodes between zones,
+	 * which could corrupt free lists */
+	if (page_to_nid(page) != page_to_nid(buddy))
+		return 0;
+#endif
 
 	if (page_is_guard(buddy) && page_order(buddy) == order) {
 		VM_BUG_ON(page_count(buddy) != 0);
@@ -716,7 +726,6 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 {
 	unsigned long flags;
 	int migratetype;
-
 	if (!free_pages_prepare(page, order))
 		return;
 
@@ -724,7 +733,7 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 	__count_vm_events(PGFREE, 1 << order);
 	migratetype = get_pageblock_migratetype(page);
 	set_freepage_migratetype(page, migratetype);
-	free_one_page(page_zone(page), page, order, migratetype);
+	free_one_page(dnuma_move_free_page_zone(page), page, order, migratetype);
 	local_irq_restore(flags);
 }
 
@@ -924,8 +933,9 @@ int move_freepages(struct zone *zone,
 	struct page *page;
 	unsigned long order;
 	int pages_moved = 0;
+	int zone_nid = zone_to_nid(zone);
 
-#ifndef CONFIG_HOLES_IN_ZONE
+#if !defined(CONFIG_HOLES_IN_ZONE)
 	/*
 	 * page_zone is not safe to call in this context when
 	 * CONFIG_HOLES_IN_ZONE is set. This bug check is probably redundant
@@ -937,13 +947,20 @@ int move_freepages(struct zone *zone,
 #endif
 
 	for (page = start_page; page <= end_page;) {
-		/* Make sure we are not inadvertently changing nodes */
-		VM_BUG_ON(page_to_nid(page) != zone_to_nid(zone));
-
 		if (!pfn_valid_within(page_to_pfn(page))) {
 			page++;
 			continue;
 		}
+
+#ifndef CONFIG_DYNAMIC_NUMA
+		/* Make sure we are not inadvertently changing nodes */
+		VM_BUG_ON(page_to_nid(page) != zone_nid);
+#else
+		if (page_to_nid(page) != zone_nid) {
+			page++;
+			continue;
+		}
+#endif
 
 		if (!PageBuddy(page)) {
 			page++;
@@ -1298,6 +1315,7 @@ void mark_free_pages(struct zone *zone)
  */
 void free_hot_cold_page(struct page *page, int cold)
 {
+	int dest_nid;
 	struct zone *zone = page_zone(page);
 	struct per_cpu_pages *pcp;
 	unsigned long flags;
@@ -1310,6 +1328,12 @@ void free_hot_cold_page(struct page *page, int cold)
 	set_freepage_migratetype(page, migratetype);
 	local_irq_save(flags);
 	__count_vm_event(PGFREE);
+
+	if (dnuma_page_needs_move(page, &dest_nid)) {
+		struct zone *dest_zone = dnuma_prior_free_to_new_zone(page, dest_nid);
+		free_one_page(dest_zone, page, 0, migratetype);
+		goto out;
+	}
 
 	/*
 	 * We only track unmovable, reclaimable and movable on pcp lists.
@@ -1947,6 +1971,7 @@ try_this_zone:
 						gfp_mask, migratetype);
 		if (page)
 			break;
+
 this_zone_full:
 		if (IS_ENABLED(CONFIG_NUMA))
 			zlc_mark_zone_full(zonelist, z);
