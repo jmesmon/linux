@@ -162,6 +162,28 @@ config MOVABLE_NODE
 	  Say Y here if you want to hotplug a whole node.
 	  Say N here if you want kernel to use memory on all nodes evenly.
 
+config HAVE_ARCH_MEMLAYOUT_INIT
+	boolean
+
+config DYNAMIC_NUMA
+	bool "Dynamic Numa: Allow NUMA layout to change after boot time"
+	depends on NUMA
+	depends on !DISCONTIGMEM
+	depends on MEMORY_HOTPLUG # locking + mem_online_node().
+	help
+	 Dynamic Numa (DNUMA) allows the movement of pages between NUMA nodes at
+	 run time.
+
+	 Typically, this is used on systems running under a hypervisor which
+	 may move the running VM based on the hypervisors needs. On such a
+	 system, this config option enables Linux to update it's knowledge of
+	 the memory layout.
+
+	 If the feature is not used but is enabled, there is a small amount of overhead (an
+	 additional pointer NULL check) added to all page frees.
+
+	 Choose Y if you have one of these systems (XXX: which ones?), otherwise choose N.
+
 # eventually, we can have this option just 'select SPARSEMEM'
 config MEMORY_HOTPLUG
 	bool "Allow for memory hot-add"
