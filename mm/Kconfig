@@ -147,7 +147,12 @@ config MEMORY_ISOLATION
 # the additional locking in 'sturct page' provided by memory hotplug.
 config DYNAMIC_NUMA
 	bool "Allow NUMA layout to change dynamically"
-	#select MEMORY_HOTPLUG
+	#select NUMA
+	#depends on NUMA
+	# for tracking the nodes -- should use a better mechanism.
+	# XXX: add support for using the pgdata_t's
+	#depends on HAVE_MEMBLOCK_NODEMAP
+	#select MEMORY_HOTPLUG # just for the locking.
 
 # eventually, we can have this option just 'select SPARSEMEM'
 config MEMORY_HOTPLUG
