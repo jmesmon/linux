@@ -6168,3 +6168,16 @@ void dump_page(struct page *page)
 	dump_page_flags(page->flags);
 	mem_cgroup_print_bad_page(page);
 }
+
+/* called by arch's free_initmem & similar functions for freeing the initrd */
+void free_init_page_range(unsigned long start_addr, unsigned long end_addr)
+{
+	unsigned long addr;
+	for (addr = start_addr; addr < end_addr; addr += PAGE_SIZE) {
+		ClearPageReserved(virt_to_page(addr));
+		init_page_count(virt_to_page(addr));
+		memset((void *)addr, POISON_FREE_INITMEM, PAGE_SIZE);
+		free_page(addr);
+		totalram_pages++;
+	}
+}
