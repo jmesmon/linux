@@ -1692,5 +1692,8 @@ extern void reset_zone_present_pages(void);
 extern void fixup_zone_present_pages(int nid, unsigned long start_pfn,
 				unsigned long end_pfn);
 
+extern void free_init_page_range(unsigned long start_addr,
+		unsigned long end_addr);
+
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */
