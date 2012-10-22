@@ -63,19 +63,10 @@ mem_init(void)
 }
 
 /* free the pages occupied by initialization code */
-
-void 
+void
 free_initmem(void)
 {
-        unsigned long addr;
-
-        addr = (unsigned long)(&__init_begin);
-        for (; addr < (unsigned long)(&__init_end); addr += PAGE_SIZE) {
-                ClearPageReserved(virt_to_page(addr));
-                init_page_count(virt_to_page(addr));
-                free_page(addr);
-                totalram_pages++;
-        }
+	free_init_page_range(&__init_begin, &__init_end);
         printk (KERN_INFO "Freeing unused kernel memory: %luk freed\n",
 		(unsigned long)((&__init_end - &__init_begin) >> 10));
 }
