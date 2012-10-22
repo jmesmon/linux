@@ -334,7 +334,6 @@ int devmem_is_allowed(unsigned long pagenr)
 
 void free_init_pages(char *what, unsigned long begin, unsigned long end)
 {
-	unsigned long addr;
 	unsigned long begin_aligned, end_aligned;
 
 	/* Make sure boundaries are page aligned */
@@ -348,8 +347,6 @@ void free_init_pages(char *what, unsigned long begin, unsigned long end)
 
 	if (begin >= end)
 		return;
-
-	addr = begin;
 
 	/*
 	 * If debugging page accesses then do not free this memory but
@@ -371,13 +368,7 @@ void free_init_pages(char *what, unsigned long begin, unsigned long end)
 
 	printk(KERN_INFO "Freeing %s: %luk freed\n", what, (end - begin) >> 10);
 
-	for (; addr < end; addr += PAGE_SIZE) {
-		ClearPageReserved(virt_to_page(addr));
-		init_page_count(virt_to_page(addr));
-		memset((void *)addr, POISON_FREE_INITMEM, PAGE_SIZE);
-		free_page(addr);
-		totalram_pages++;
-	}
+	free_init_page_range(begin, end);
 #endif
 }
 
