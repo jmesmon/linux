@@ -62,6 +62,7 @@
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
 #include "internal.h"
+#include "dnuma.h"
 
 #ifdef CONFIG_USE_PERCPU_NUMA_NODE_ID
 DEFINE_PER_CPU(int, numa_node);
@@ -6130,5 +6131,18 @@ void fixup_zone_present_pages(int nid, unsigned long start_pfn,
 		if (!(zone_start_pfn >= end_pfn	|| zone_end_pfn <= start_pfn))
 			z->present_pages += min(end_pfn, zone_end_pfn) -
 					    max(start_pfn, zone_start_pfn);
+	}
+}
+
+void free_init_page_range(unsigned long start_addr, unsigned long end_addr)
+{
+	unsigned long addr;
+	memregion_init_from_memblock();
+	for (addr = start_addr; addr < end_addr; addr += PAGE_SIZE) {
+		ClearPageReserved(virt_to_page(addr));
+		init_page_count(virt_to_page(addr));
+		memset((void *)addr, POISON_FREE_INITMEM, PAGE_SIZE);
+		free_page(addr);
+		totalram_pages++;
 	}
 }
