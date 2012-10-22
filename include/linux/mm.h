@@ -1688,5 +1688,8 @@ static inline unsigned int debug_guardpage_minorder(void) { return 0; }
 static inline bool page_is_guard(struct page *page) { return false; }
 #endif /* CONFIG_DEBUG_PAGEALLOC */
 
+extern void free_init_page_range(unsigned long start_addr,
+		unsigned long end_addr);
+
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */
