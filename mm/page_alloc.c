@@ -6132,3 +6132,15 @@ void fixup_zone_present_pages(int nid, unsigned long start_pfn,
 					    max(start_pfn, zone_start_pfn);
 	}
 }
+
+void free_init_page_range(unsigned long start_addr, unsigned long end_addr)
+{
+	unsigned long addr;
+	for (addr = start_addr; addr < end_addr; addr += PAGE_SIZE) {
+		ClearPageReserved(virt_to_page(addr));
+		init_page_count(virt_to_page(addr));
+		memset((void *)addr, POISON_FREE_INITMEM, PAGE_SIZE);
+		free_page(addr);
+		totalram_pages++;
+	}
+}
