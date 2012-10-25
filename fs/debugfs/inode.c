@@ -83,8 +83,8 @@ static int debugfs_mknod(struct inode *dir, struct dentry *dentry,
 
 	inode = debugfs_get_inode(dir->i_sb, mode, dev, data, fops);
 	if (inode) {
-		dget(dentry);
 		d_instantiate(dentry, inode);
+		dget(dentry);
 		error = 0;
 	}
 	return error;
