@@ -6147,6 +6147,7 @@ void fixup_zone_present_pages(int nid, unsigned long start_pfn,
 	}
 }
 
+#include <linux/slab.h>
 void free_init_page_range(unsigned long start_addr, unsigned long end_addr)
 {
 	unsigned long addr;
