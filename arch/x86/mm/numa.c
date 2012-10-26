@@ -11,6 +11,7 @@
 #include <linux/nodemask.h>
 #include <linux/sched.h>
 #include <linux/topology.h>
+#include <linux/dnuma.h>
 
 #include <asm/e820.h>
 #include <asm/proto.h>
@@ -31,6 +32,21 @@ static struct numa_meminfo numa_meminfo
 __initdata
 #endif
 ;
+
+#ifdef CONFIG_DYNAMIC_NUMA
+void __init arch_memlayout_init(void)
+{
+	struct numa_meminfo *mi = &numa_meminfo;
+	int i;
+	struct numa_memblk *blk;
+	for (i = 0; i < mi->nr_blks; i++) {
+		blk = mi->blk + i;
+		memlayout_new_range(blk->start, blk->end - 1, blk->nid);
+	}
+
+	memlayout_commit();
+}
+#endif
 
 static int numa_distance_cnt;
 static u8 *numa_distance;
