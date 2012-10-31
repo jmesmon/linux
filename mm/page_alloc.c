@@ -6113,7 +6113,9 @@ void dump_page(struct page *page)
 	mem_cgroup_print_bad_page(page);
 }
 
-void free_init_page_range(unsigned long start_addr, unsigned long end_addr)
+/* arch_memlayout_init is __init, so we need __ref (which is safe because we're
+ * the ones doing the clearing of init mem */
+void __ref free_init_page_range(unsigned long start_addr, unsigned long end_addr)
 {
 	unsigned long addr;
 	if (!WARN_ON(!slab_is_available()))
