@@ -6147,7 +6147,9 @@ void fixup_zone_present_pages(int nid, unsigned long start_pfn,
 	}
 }
 
-void free_init_page_range(unsigned long start_addr, unsigned long end_addr)
+/* arch_memlayout_init is __init, so we need __ref (which is safe because we're
+ * the ones doing the clearing of init mem */
+void __ref free_init_page_range(unsigned long start_addr, unsigned long end_addr)
 {
 	unsigned long addr;
 	if (!WARN_ON(!slab_is_available()))
