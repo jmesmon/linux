@@ -73,7 +73,7 @@ static void memlayout_debugfs_create(struct dentry *base)
 		sprintf(name, "%lX-%lX", rme->pfn_start, rme->pfn_end);
 		rd = debugfs_create_file(name, 0400, base, (void *)rme->nid, &range_fops);
 		if (!rd) {
-			pr_devel("failed to create memlayout: {%lX-%lX}:%d", rme->pfn_start, rme->pfn_end, rme->nid);
+			pr_devel("failed to create memlayout debugfs: {%lX-%lX}:%d", rme->pfn_start, rme->pfn_end, rme->nid);
 			return;
 		}
 	}
@@ -114,7 +114,7 @@ static int find_insertion_point(unsigned long pfn_start, unsigned long pfn_end, 
 {
 	struct rb_node **new = &new_pfn_to_node_map.rb_node, *parent = NULL;
 	struct rangemap_entry *rme;
-	pr_devel("adding range: {%lX-%lX}:?", pfn_start, pfn_end);
+	pr_debug("adding range: {%lX-%lX}:?", pfn_start, pfn_end);
 	while(*new) {
 		rme = rb_entry(*new, typeof(*rme), node);
 
@@ -126,7 +126,7 @@ static int find_insertion_point(unsigned long pfn_start, unsigned long pfn_end, 
 		else {
 			/* an embedded region, need to use an interval or
 			 * sequence tree. */
-			pr_devel("failed on embedded region new:{%lX,%lX}:? inside old:{%lX-%lX}:%d",
+			pr_debug("tried to embed {%lX,%lX}:? inside {%lX-%lX}:%d",
 				 pfn_start, pfn_end,
 				 rme->pfn_start, rme->pfn_end, rme->nid);
 			return 1;
@@ -159,6 +159,10 @@ int memlayout_new_range(unsigned long pfn_start, unsigned long pfn_end, int nid)
 	rme = kmalloc(sizeof(*rme), GFP_KERNEL);
 	if (!rme)
 		return -ENOMEM;
+
+	rme->pfn_start = pfn_start;
+	rme->pfn_end = pfn_end;
+	rme->nid = nid;
 
 	rb_link_node(&rme->node, parent, new);
 	rb_insert_color(&rme->node, &pfn_to_node_map);
