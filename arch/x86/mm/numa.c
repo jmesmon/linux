@@ -39,10 +39,14 @@ void __init arch_memlayout_init(void)
 	struct numa_meminfo *mi = &numa_meminfo;
 	int i;
 	struct numa_memblk *blk;
+	pr_devel("memlayout: >> adding ranges from numa_meminfo");
 	for (i = 0; i < mi->nr_blks; i++) {
 		blk = mi->blk + i;
+		pr_devel("memlayout: adding range {%LX-%LX}:%d",
+			blk->start, blk->end - 1, blk->nid);
 		memlayout_new_range(blk->start, blk->end - 1, blk->nid);
 	}
+	pr_devel("memlayout: << done adding ranges from numa_meminfo");
 
 	memlayout_commit();
 }
