@@ -110,11 +110,11 @@ module_exit(memlayout_debugfs_exit);
 #error "FAIL?"
 #endif
 
-static int find_insertion_point(unsigned long pfn_start, unsigned long pfn_end, struct rb_node ***o_new, struct rb_node **o_parent)
+static int find_insertion_point(unsigned long pfn_start, unsigned long pfn_end, int nid, struct rb_node ***o_new, struct rb_node **o_parent)
 {
 	struct rb_node **new = &new_pfn_to_node_map.rb_node, *parent = NULL;
 	struct rangemap_entry *rme;
-	pr_debug("adding range: {%lX-%lX}:?", pfn_start, pfn_end);
+	pr_debug("adding early range: {%lX-%lX}:%d", pfn_start, pfn_end, nid);
 	while(*new) {
 		rme = rb_entry(*new, typeof(*rme), node);
 
@@ -126,8 +126,8 @@ static int find_insertion_point(unsigned long pfn_start, unsigned long pfn_end, 
 		else {
 			/* an embedded region, need to use an interval or
 			 * sequence tree. */
-			pr_debug("tried to embed {%lX,%lX}:? inside {%lX-%lX}:%d",
-				 pfn_start, pfn_end,
+			pr_warn("tried to embed {%lX,%lX}:%d inside {%lX-%lX}:%d",
+				 pfn_start, pfn_end, nid,
 				 rme->pfn_start, rme->pfn_end, rme->nid);
 			return 1;
 		}
@@ -141,7 +141,7 @@ static int find_insertion_point(unsigned long pfn_start, unsigned long pfn_end, 
 static int early_new_range(struct rangemap_entry *rme)
 {
 	struct rb_node **new, *parent;
-	if (find_insertion_point(rme->pfn_start, rme->pfn_end, &new, &parent))
+	if (find_insertion_point(rme->pfn_start, rme->pfn_end, rme->nid, &new, &parent))
 		return 1;
 
 	rb_link_node(&rme->node, parent, new);
@@ -153,7 +153,7 @@ int memlayout_new_range(unsigned long pfn_start, unsigned long pfn_end, int nid)
 {
 	struct rb_node **new, *parent;
 	struct rangemap_entry *rme;
-	if (find_insertion_point(pfn_start, pfn_end, &new, &parent))
+	if (find_insertion_point(pfn_start, pfn_end, nid, &new, &parent))
 		return 1;
 
 	rme = kmalloc(sizeof(*rme), GFP_KERNEL);
