@@ -7,7 +7,7 @@
 
 #ifdef CONFIG_DYNAMIC_NUMA
 # ifdef NODE_NOT_IN_PAGE_FLAGS
-#  error "CONFIG_DYNAMIC_NUMA requires the NODE is in page flags. Try freeing up some flags by decreasing the maximum number of NUMA nodes."
+#  error "CONFIG_DYNAMIC_NUMA requires the NODE is in page flags. Try freeing up some flags by decreasing the maximum number of NUMA nodes, or switch to sparsmem-vmemmap"
 # endif
 
 /* Callers are assumed to be serialized */
