@@ -614,8 +614,8 @@ endif
 endif
 
 ifdef CONFIG_DEBUG_INFO
-KBUILD_CFLAGS	+= -g
-KBUILD_AFLAGS	+= -gdwarf-2
+KBUILD_CFLAGS	+= -ggdb3 -fvar-tracking-assignments -fkeep-inline-funtions
+KBUILD_AFLAGS	+= -ggdb3
 endif
 
 ifdef CONFIG_DEBUG_INFO_REDUCED
