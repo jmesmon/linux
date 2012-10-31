@@ -239,6 +239,7 @@ bool oom_killer_disabled __read_mostly;
 #ifdef CONFIG_DEBUG_VM
 static int page_outside_zone_boundaries(struct zone *zone, struct page *page)
 {
+#ifndef CONFIG_DYNAMIC_NUMA
 	int ret = 0;
 	unsigned seq;
 	unsigned long pfn = page_to_pfn(page);
@@ -252,14 +253,23 @@ static int page_outside_zone_boundaries(struct zone *zone, struct page *page)
 	} while (zone_span_seqretry(zone, seq));
 
 	return ret;
+#else /* defined(CONFIG_DYNAMIC_NUMA) */
+	/* in dynamic numa, we ignore the traditional boundaries. */
+	/* TODO: - potentially adjust spanned_pages so this check works.
+	 *       - also, find what other users of spanned_pages exsist.
+	 */
+	return 0;
+#endif
 }
 
 static int page_is_consistent(struct zone *zone, struct page *page)
 {
 	if (!pfn_valid_within(page_to_pfn(page)))
 		return 0;
+#ifndef CONFIG_DYNAMIC_NUMA
 	if (zone != page_zone(page))
 		return 0;
+#endif
 
 	return 1;
 }
