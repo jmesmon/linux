@@ -1,6 +1,7 @@
 #define pr_fmt(fmt) "memlayout: " fmt
 #define DEBUG 1
 
+#include <linux/atomic.h>
 #include <linux/debugfs.h>
 #include <linux/dnuma.h>
 #include <linux/init.h>   /* __init */
@@ -46,10 +47,15 @@ struct rangemap_entry {
 	int nid;
 };
 
-static struct rb_root pfn_to_node_map, new_pfn_to_node_map;
+static struct rb_root pfn_to_node_map;
 static DEFINE_SPINLOCK(update_lock);
 
+u64 dnuma_moved_page_ct;
+DEFINE_SPINLOCK(dnuma_stats_lock);
+
 #if defined(CONFIG_DEBUG_FS)
+static atomic_t ml_seq = ATOMIC_INIT(0);
+#define ml_seq_get() (atomic_inc_return(&ml_seq) - 1)
 
 static int dfs_range_get(void *data, u64 *val)
 {
@@ -64,19 +70,37 @@ DEFINE_SIMPLE_ATTRIBUTE(range_fops, dfs_range_get, NULL, "%llu");
 	     &rme->node;						     \
 	     rme = rb_entry(rb_next(&rme->node), typeof(*rme), node))
 
-static void memlayout_debugfs_create(struct dentry *base)
+static void memlayout_debugfs_create(struct dentry *parent, const char *layout_name)
 {
 	struct rangemap_entry *rme;
-	char name[BITS_PER_LONG / 4 + 2];
-	struct dentry *rd;
+	char name[2 * BITS_PER_LONG / 4 + 2];
+	struct dentry *rd, *base = debugfs_create_dir(layout_name, parent);
+	if (!base)
+		return;
+
+	rcu_read_lock();
 	for_each_memlayout_range(rme) {
 		sprintf(name, "%lX-%lX", rme->pfn_start, rme->pfn_end);
 		rd = debugfs_create_file(name, 0400, base, (void *)rme->nid, &range_fops);
 		if (!rd) {
-			pr_devel("failed to create memlayout debugfs: {%lX-%lX}:%d", rme->pfn_start, rme->pfn_end, rme->nid);
+			pr_devel("debugfs: failed to create {%lX-%lX}:%d", rme->pfn_start, rme->pfn_end, rme->nid);
 			return;
-		}
+		} else
+			pr_devel("debugfs: created {%lX-%lX}:%d", rme->pfn_start, rme->pfn_end, rme->nid);
 	}
+	rcu_read_unlock();
+}
+
+#define BITS_PER_INT (sizeof(int) * 8)
+static void ml_dbgfs_update(void)
+{
+	int seq = ml_seq_get();
+	char name[BITS_PER_INT / 4 + 1 + strlen("layout.")];
+	sprintf(name, "layout.%d", seq);
+	memlayout_debugfs_create(root_dentry, name);
+	/* XXX: remove old symlink? or will this overwrite? (overwriting would
+	 * be nice) */
+	debugfs_create_symlink("current", root_dentry, name);
 }
 
 static int __init memlayout_debugfs_init(void)
@@ -87,14 +111,13 @@ static int __init memlayout_debugfs_init(void)
 	}
 
 	root_dentry = debugfs_create_dir("memlayout", NULL);
-	if (!root_dentry) {
-		pr_devel("failed to create dir");
+	if (!root_dentry)
 		return 0;
-	}
 
-	rcu_read_lock();
-	memlayout_debugfs_create(root_dentry);
-	rcu_read_unlock();
+	/* place in a different dir: try to keep memlayout & dnuma seperate */
+	debugfs_create_u64("moved-pages", 0400, root_dentry, &dnuma_moved_page_ct);
+
+	ml_dbgfs_update();
 
 	return 0;
 }
@@ -108,13 +131,14 @@ module_init(memlayout_debugfs_init);
 module_exit(memlayout_debugfs_exit);
 #else
 #error "FAIL?"
+static inline void ml_dbgfs_update(void) { }
 #endif
 
-static int find_insertion_point(unsigned long pfn_start, unsigned long pfn_end, int nid, struct rb_node ***o_new, struct rb_node **o_parent)
+static int find_insertion_point(struct memlayout ml, unsigned long pfn_start, unsigned long pfn_end, int nid, struct rb_node ***o_new, struct rb_node **o_parent)
 {
-	struct rb_node **new = &new_pfn_to_node_map.rb_node, *parent = NULL;
+	struct rb_node **new = &ml.root.rb_node, *parent = NULL;
 	struct rangemap_entry *rme;
-	pr_debug("adding early range: {%lX-%lX}:%d", pfn_start, pfn_end, nid);
+	pr_debug("adding range: {%lX-%lX}:%d", pfn_start, pfn_end, nid);
 	while(*new) {
 		rme = rb_entry(*new, typeof(*rme), node);
 
@@ -138,6 +162,7 @@ static int find_insertion_point(unsigned long pfn_start, unsigned long pfn_end, 
 	return 0;
 }
 
+#if 0
 static int early_new_range(struct rangemap_entry *rme)
 {
 	struct rb_node **new, *parent;
@@ -148,12 +173,13 @@ static int early_new_range(struct rangemap_entry *rme)
 	rb_insert_color(&rme->node, &pfn_to_node_map);
 	return 0;
 }
+#endif
 
-int memlayout_new_range(unsigned long pfn_start, unsigned long pfn_end, int nid)
+int memlayout_new_range(struct memlayout ml, unsigned long pfn_start, unsigned long pfn_end, int nid)
 {
 	struct rb_node **new, *parent;
 	struct rangemap_entry *rme;
-	if (find_insertion_point(pfn_start, pfn_end, nid, &new, &parent))
+	if (find_insertion_point(ml, pfn_start, pfn_end, nid, &new, &parent))
 		return 1;
 
 	rme = kmalloc(sizeof(*rme), GFP_KERNEL);
@@ -165,7 +191,7 @@ int memlayout_new_range(unsigned long pfn_start, unsigned long pfn_end, int nid)
 	rme->nid = nid;
 
 	rb_link_node(&rme->node, parent, new);
-	rb_insert_color(&rme->node, &pfn_to_node_map);
+	rb_insert_color(&rme->node, &ml.root);
 
 	return 0;
 }
@@ -237,18 +263,35 @@ static void free_rme_tree(struct rb_node *root)
 	}
 }
 
-/* fiddling with rb_node inside the rb_root is done to avoid what is
- * (currently) an unneeded secondary dereference.  */
-void memlayout_commit(void)
+void memlayout_commit_initial(struct memlayout ml)
 {
 	struct rb_node *root;
 	unsigned long flags;
 
 	spin_lock_irqsave(&update_lock, flags);
 	root = rcu_dereference_protected(pfn_to_node_map.rb_node,
-			spin_is_locked(&update_lock));
+					 spin_is_locked(&update_lock));
+	if (!root)
+		rcu_assign_pointer(pfn_to_node_map.rb_node,
+				   ml.root.rb_node);
+	spin_unlock_irqrestore(&update_lock, flags);
+
+	synchronize_rcu();
+}
+
+/* fiddling with rb_node inside the rb_root is done to avoid what is
+ * (currently) an unneeded secondary dereference.  */
+void memlayout_commit(struct memlayout ml)
+{
+	struct rb_node *root;
+	unsigned long flags;
+
+	spin_lock_irqsave(&update_lock, flags);
+	root = rcu_dereference_protected(pfn_to_node_map.rb_node,
+					 spin_is_locked(&update_lock));
 	rcu_assign_pointer(pfn_to_node_map.rb_node,
-			new_pfn_to_node_map.rb_node);
+			   ml.root.rb_node);
+	ml_dbgfs_update();
 	spin_unlock_irqrestore(&update_lock, flags);
 
 	synchronize_rcu();
@@ -259,8 +302,9 @@ int __init_memblock memlayout_init_from_memblock(void)
 {
 	int i, nid, errs = 0;
 	unsigned long start, end;
+	DEFINE_MEMLAYOUT(ml);
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, &nid) {
-		int r = memlayout_new_range(start, end - 1, nid);
+		int r = memlayout_new_range(ml, start, end - 1, nid);
 		if (r) {
 			pr_err("failed to add range [%lx, %lx] in node %d to mapping",
 					start, end, nid);
@@ -270,6 +314,6 @@ int __init_memblock memlayout_init_from_memblock(void)
 					start, end, nid);
 	}
 
-	memlayout_commit();
+	memlayout_commit_initial(ml);
 	return errs;
 }
