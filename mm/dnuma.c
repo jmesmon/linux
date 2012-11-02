@@ -63,7 +63,7 @@ static int dfs_range_get(void *data, u64 *val)
 	return 0;
 }
 static struct dentry *root_dentry;
-DEFINE_SIMPLE_ATTRIBUTE(range_fops, dfs_range_get, NULL, "%llu");
+DEFINE_SIMPLE_ATTRIBUTE(range_fops, dfs_range_get, NULL, "%Ld\n");
 
 #define for_each_memlayout_range(rme) \
 	for (rme = rb_entry(rb_first(&pfn_to_node_map), typeof(*rme), node); \
@@ -134,9 +134,9 @@ module_exit(memlayout_debugfs_exit);
 static inline void ml_dbgfs_update(void) { }
 #endif
 
-static int find_insertion_point(struct memlayout ml, unsigned long pfn_start, unsigned long pfn_end, int nid, struct rb_node ***o_new, struct rb_node **o_parent)
+static int find_insertion_point(struct memlayout *ml, unsigned long pfn_start, unsigned long pfn_end, int nid, struct rb_node ***o_new, struct rb_node **o_parent)
 {
-	struct rb_node **new = &ml.root.rb_node, *parent = NULL;
+	struct rb_node **new = &ml->root.rb_node, *parent = NULL;
 	struct rangemap_entry *rme;
 	pr_debug("adding range: {%lX-%lX}:%d", pfn_start, pfn_end, nid);
 	while(*new) {
@@ -175,7 +175,7 @@ static int early_new_range(struct rangemap_entry *rme)
 }
 #endif
 
-int memlayout_new_range(struct memlayout ml, unsigned long pfn_start, unsigned long pfn_end, int nid)
+int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start, unsigned long pfn_end, int nid)
 {
 	struct rb_node **new, *parent;
 	struct rangemap_entry *rme;
@@ -191,7 +191,7 @@ int memlayout_new_range(struct memlayout ml, unsigned long pfn_start, unsigned l
 	rme->nid = nid;
 
 	rb_link_node(&rme->node, parent, new);
-	rb_insert_color(&rme->node, &ml.root);
+	rb_insert_color(&rme->node, &ml->root);
 
 	return 0;
 }
@@ -263,7 +263,7 @@ static void free_rme_tree(struct rb_node *root)
 	}
 }
 
-void memlayout_commit_initial(struct memlayout ml)
+void memlayout_commit_initial(struct memlayout *ml)
 {
 	struct rb_node *root;
 	unsigned long flags;
@@ -271,17 +271,20 @@ void memlayout_commit_initial(struct memlayout ml)
 	spin_lock_irqsave(&update_lock, flags);
 	root = rcu_dereference_protected(pfn_to_node_map.rb_node,
 					 spin_is_locked(&update_lock));
-	if (!root)
+	if (WARN(root, "memlayout_commit_initial is not first: ")) {
+		spin_unlock_irqrestore(&update_lock, flags);
+		free_rme_tree(ml->root.rb_node);
+	} else {
 		rcu_assign_pointer(pfn_to_node_map.rb_node,
-				   ml.root.rb_node);
-	spin_unlock_irqrestore(&update_lock, flags);
-
-	synchronize_rcu();
+				   ml->root.rb_node);
+		spin_unlock_irqrestore(&update_lock, flags);
+		synchronize_rcu();
+	}
 }
 
 /* fiddling with rb_node inside the rb_root is done to avoid what is
  * (currently) an unneeded secondary dereference.  */
-void memlayout_commit(struct memlayout ml)
+void memlayout_commit(struct memlayout *ml)
 {
 	struct rb_node *root;
 	unsigned long flags;
@@ -290,7 +293,7 @@ void memlayout_commit(struct memlayout ml)
 	root = rcu_dereference_protected(pfn_to_node_map.rb_node,
 					 spin_is_locked(&update_lock));
 	rcu_assign_pointer(pfn_to_node_map.rb_node,
-			   ml.root.rb_node);
+			   ml->root.rb_node);
 	ml_dbgfs_update();
 	spin_unlock_irqrestore(&update_lock, flags);
 
@@ -304,7 +307,7 @@ int __init_memblock memlayout_init_from_memblock(void)
 	unsigned long start, end;
 	DEFINE_MEMLAYOUT(ml);
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, &nid) {
-		int r = memlayout_new_range(ml, start, end - 1, nid);
+		int r = memlayout_new_range(&ml, start, end - 1, nid);
 		if (r) {
 			pr_err("failed to add range [%lx, %lx] in node %d to mapping",
 					start, end, nid);
@@ -314,6 +317,6 @@ int __init_memblock memlayout_init_from_memblock(void)
 					start, end, nid);
 	}
 
-	memlayout_commit_initial(ml);
+	memlayout_commit_initial(&ml);
 	return errs;
 }
