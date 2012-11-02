@@ -24,7 +24,7 @@ extern spinlock_t dnuma_stats_lock;
 #define DEFINE_MEMLAYOUT(name) struct memlayout name = MEMLAYOUT_INIT
 
 /* Callers accesing the same memlayout are assumed to be serialized */
-int memlayout_new_range(struct memlayout ml,
+int memlayout_new_range(struct memlayout *ml,
 		unsigned long pfn_start, unsigned long pfn_end, int nid);
 
 /* only queries the memlayout tracking structures. */
@@ -38,12 +38,12 @@ int memlayout_pfn_to_nid_no_pageflags(unsigned long pfn);
  *
  * memlayout takes ownership of ml, no futher mamlayout_new_range's should be issued
  */
-void memlayout_commit(struct memlayout ml);
+void memlayout_commit(struct memlayout *ml);
 
 /* only commits the changes if it is the first to do so. Otherwise makes no
  * changes to the memlayout.
  * For use in arch_memlayout_init() */
-void memlayout_commit_initial(struct memlayout ml);
+void memlayout_commit_initial(struct memlayout *ml);
 
 /* reqires: slab_is_available()
  * sleeps: definitely: memlayout_commit() -> synchronize_rcu()
