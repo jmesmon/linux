@@ -726,7 +726,6 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 {
 	unsigned long flags;
 	int migratetype;
-
 	if (!free_pages_prepare(page, order))
 		return;
 
@@ -734,7 +733,7 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 	__count_vm_events(PGFREE, 1 << order);
 	migratetype = get_pageblock_migratetype(page);
 	set_freepage_migratetype(page, migratetype);
-	free_one_page(memlayout_page_zone(page), page, order, migratetype);
+	free_one_page(dnuma_move_free_page_zone(page), page, order, migratetype);
 	local_irq_restore(flags);
 }
 
@@ -1300,7 +1299,7 @@ void mark_free_pages(struct zone *zone)
  */
 void free_hot_cold_page(struct page *page, int cold)
 {
-	struct zone *zone = memlayout_page_zone(page);
+	struct zone *zone = dnuma_move_free_page_zone(page);
 	struct per_cpu_pages *pcp;
 	unsigned long flags;
 	int migratetype;
@@ -1967,16 +1966,17 @@ zonelist_scan:
 try_this_zone:
 		page = buffered_rmqueue(preferred_zone, zone, order,
 						gfp_mask, migratetype);
-		if (page)
-			break;
-		{
-			int new_nid = memlayout_page_to_nid(page), cur_nid =page_to_nid(page);
+		if (page) {
+			int new_nid = memlayout_page_to_nid(page), cur_nid = page_to_nid(page);
 			if (new_nid != cur_nid) {
 				/* do something */
-				pr_debug("allocated page %p from node %d which belongs in node %d",
+				pr_debug("allocated page %pK from node %d which belongs in node %d",
 						page, cur_nid, new_nid);
 			}
+
+			break;
 		}
+
 this_zone_full:
 		if (NUMA_BUILD)
 			zlc_mark_zone_full(zonelist, z);
@@ -6149,13 +6149,10 @@ void fixup_zone_present_pages(int nid, unsigned long start_pfn,
 	}
 }
 
-/* arch_memlayout_init is __init, so we need __ref (which is safe because we're
- * the ones doing the clearing of init mem */
-void __ref free_init_page_range(unsigned long start_addr, unsigned long end_addr)
+/* called by arch's free_initmem & similar functions for freeing the initrd */
+void free_init_page_range(unsigned long start_addr, unsigned long end_addr)
 {
 	unsigned long addr;
-	if (!WARN_ON(!slab_is_available()))
-		arch_memlayout_init();
 	for (addr = start_addr; addr < end_addr; addr += PAGE_SIZE) {
 		ClearPageReserved(virt_to_page(addr));
 		init_page_count(virt_to_page(addr));
