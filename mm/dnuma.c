@@ -14,6 +14,12 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
+#ifdef CONFIG_DEBUG_FS
+#define HAVE_DEBUG_FS 1
+#else
+#define HAVE_DEBUG_FS 0
+#endif
+
 /* Need to map an index (in this case, memory ranges/regions) to the range set it belongs to.
  * Overlapping is not allowed, so iterval/sequence trees are not needed
  */
@@ -103,6 +109,58 @@ static void ml_dbgfs_update(void)
 	debugfs_create_symlink("current", root_dentry, name);
 }
 
+#if defined(CONFIG_DNUMA_USER_WRITE)
+
+#define DEFINE_DEBUGFS_GET(___type)					\
+	static int debugfs_## ___type ## _get(void *data, u64 *val)	\
+	{								\
+		*val = *(___type *)data;				\
+		return 0;						\
+	}
+
+DEFINE_DEBUGFS_GET(u32)
+DEFINE_DEBUGFS_GET(u8)
+
+#define DEFINE_WATCHED_ATTR(___type, ___var)			\
+	static int ___var ## _watch_set(void *data, u64 val)	\
+	{							\
+		___type old_val = *(___type *)data;		\
+		int ret = ___var ## _watch(old_val, val);	\
+		if (!ret)					\
+			*(___type *)data = val;			\
+		return ret;					\
+	}							\
+	DEFINE_SIMPLE_ATTRIBUTE(___var ## _fops,		\
+			debugfs_ ## ___type ## _get,		\
+			___var ## _watch_set, "%llu\n");
+
+static u64 dnuma_user_start;
+static u64 dnuma_user_end;
+static u32 dnuma_user_node; /* XXX: I don't care about this var, remove? */
+static u8  dnuma_user_commit; /* XXX: don't care about this one either */
+static DEFINE_MEMLAYOUT(user_ml);
+static int dnuma_user_node_watch(u32 old_val, u32 new_val)
+{
+	/* XXX: check if 'new_val' is an allocated node. */
+	int ret = memlayout_new_range(&user_ml, dnuma_user_start, dnuma_user_end, new_val);
+	if (ret)
+		return ret;
+
+	dnuma_user_start = 0;
+	dnuma_user_end = 0;
+	return 0;
+}
+
+static int dnuma_user_commit_watch(u8 old_val, u8 new_val)
+{
+	memlayout_commit(&user_ml);
+	return 0;
+}
+
+DEFINE_WATCHED_ATTR(u32, dnuma_user_node);
+DEFINE_WATCHED_ATTR(u8, dnuma_user_commit);
+#endif
+
 static int __init memlayout_debugfs_init(void)
 {
 	if (!debugfs_initialized()) {
@@ -116,6 +174,16 @@ static int __init memlayout_debugfs_init(void)
 
 	/* place in a different dir: try to keep memlayout & dnuma seperate */
 	debugfs_create_u64("moved-pages", 0400, root_dentry, &dnuma_moved_page_ct);
+
+#if defined(CONFIG_DNUMA_USER_WRITE)
+	/* Set node last: on write, it adds the range. */
+	debugfs_create_x64("start", 0600, root_dentry, &dnuma_user_start);
+	debugfs_create_x64("end",   0600, root_dentry, &dnuma_user_end);
+	debugfs_create_file("node",  0200, root_dentry,
+			&dnuma_user_node, &dnuma_user_node_fops);
+	debugfs_create_file("commit",  0200, root_dentry,
+			&dnuma_user_commit, &dnuma_user_commit_fops);
+#endif
 
 	ml_dbgfs_update();
 
@@ -172,6 +240,11 @@ static int early_new_range(struct rangemap_entry *rme)
 	rb_link_node(&rme->node, parent, new);
 	rb_insert_color(&rme->node, &pfn_to_node_map);
 	return 0;
+}
+
+bool ml_is_empty(struct memlayout *ml)
+{
+	return ml->root.node == NULL;
 }
 #endif
 
@@ -274,11 +347,13 @@ void memlayout_commit_initial(struct memlayout *ml)
 	if (WARN(root, "memlayout_commit_initial is not first: ")) {
 		spin_unlock_irqrestore(&update_lock, flags);
 		free_rme_tree(ml->root.rb_node);
+		ml->root.rb_node = NULL;
 	} else {
 		rcu_assign_pointer(pfn_to_node_map.rb_node,
 				   ml->root.rb_node);
 		spin_unlock_irqrestore(&update_lock, flags);
 		synchronize_rcu();
+		ml->root.rb_node = NULL;
 	}
 }
 
@@ -298,6 +373,7 @@ void memlayout_commit(struct memlayout *ml)
 	spin_unlock_irqrestore(&update_lock, flags);
 
 	synchronize_rcu();
+	ml->root.rb_node = NULL;
 	free_rme_tree(root);
 }
 
