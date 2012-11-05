@@ -62,6 +62,7 @@ static inline struct zone *get_zone(int nid, enum zone_type zonenum)
 
 static inline struct zone *dnuma_move_free_page_zone(struct page *page)
 {
+	/* XXX: handle pageblock_flags */
 	enum zone_type zonenum = page_zonenum(page);
 	int new_nid = memlayout_pfn_to_nid_no_pageflags(page_to_pfn(page));
 	int old_nid = page_to_nid(page);
@@ -76,7 +77,7 @@ static inline struct zone *dnuma_move_free_page_zone(struct page *page)
 		set_page_node(page, new_nid);
 
 		spin_lock_irqsave(&dnuma_stats_lock, flags);
-		if (dnuma_moved_page_ct < ((u64)-1))
+		if (dnuma_moved_page_ct < (~(u64)0))
 			dnuma_moved_page_ct ++;
 		spin_unlock_irqrestore(&dnuma_stats_lock, flags);
 	}
