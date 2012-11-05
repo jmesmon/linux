@@ -146,13 +146,32 @@ config MEMORY_ISOLATION
 # This doesn't quite require memory_hotplug, but it does require
 # the additional locking in 'sturct page' provided by memory hotplug.
 config DYNAMIC_NUMA
-	bool "Allow NUMA layout to change dynamically"
-	#select NUMA
-	#depends on NUMA
+	bool "Dynamic Numa: Allow NUMA layout to change after boot time"
+	depends on NUMA
 	# for tracking the nodes -- should use a better mechanism.
 	# XXX: add support for using the pgdata_t's
 	#depends on HAVE_MEMBLOCK_NODEMAP
 	#select MEMORY_HOTPLUG # just for the locking.
+	help
+	 DYNAMIC_NUMA supports the movement of pages between NUMA nodes at
+	 run time.
+
+	 Typically, this is used on systems running under a hypervisor which
+	 may move the running VM based on the hypervisors needs. On such a
+	 system, this config option enables Linux to update it's knowledge of
+	 the memory layout.
+
+	 Choose Y if you have one of these systems (XXX: which ones?), otherwise
+
+config DNUMA_USER_WRITE
+	bool "Change a system's NUMA layout via debugfs"
+	depends on DYNAMIC_NUMA
+	help
+	 Enable the use of <debugfs>/memlayout/{start,end,node,commit}
+
+	 Write a PFN to 'start' & 'end', then a node id to 'node'.
+	 Repeat this until you are satisfied with your memory layout, then
+	 write '1' to 'commit'.
 
 # eventually, we can have this option just 'select SPARSEMEM'
 config MEMORY_HOTPLUG
