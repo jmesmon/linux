@@ -14,9 +14,26 @@
 
 struct memlayout {
 	struct rb_root root;
+#ifdef CONFIG_DEBUG_FS
+	unsigned seq;
+	struct dentry *d;
+#endif
 };
 
-#define MEMLAYOUT_INIT { { 0 } }
+#ifndef CONFIG_DEBUG_FS
+#define MEMLAYOUT_INIT { RB_ROOT }
+#define ml_init(ml) do { \
+	ml->root = RB_ROOT;
+} while (0)
+#else
+#define MEMLAYOUT_INIT { RB_ROOT, UINT_MAX, NULL}
+#define ml_init(ml) do { \
+	ml->seq = UINT_MAX;
+	ml->d = NULL;
+	ml->root = RB_ROOT;
+} while(0)
+#endif
+
 #define DEFINE_MEMLAYOUT(name) struct memlayout name = MEMLAYOUT_INIT
 
 /* Callers accesing the same memlayout are assumed to be serialized */
