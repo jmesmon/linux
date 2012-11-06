@@ -53,16 +53,31 @@ struct rangemap_entry {
 	int nid;
 };
 
-static struct rb_root pfn_to_node_map;
+/* protected by update_lock */
+static __rcu struct memlayout *pfn_to_node_map;
+
+#ifdef CONFIG_DEBUG_FS
+static DEFINE_MUTEX(update_lock);
+# define ml_update_lock() mutex_lock(&update_lock)
+# define ml_update_unlock() mutex_unlock(&update_locK)
+#else /* !defined(CONFIG_DEBUG_FS) */
 static DEFINE_SPINLOCK(update_lock);
+# define ml_update_lock() spin_lock(&update_lock)
+# define ml_update_unlock() spin_unlock(&update_lock)
+#endif
 
-u64 dnuma_moved_page_ct;
-DEFINE_SPINLOCK(dnuma_stats_lock);
-
-#if defined(CONFIG_DEBUG_FS)
+#ifdef CONFIG_DEBUG_FS
 static atomic_t ml_seq = ATOMIC_INIT(0);
-#define ml_seq_get() (atomic_inc_return(&ml_seq) - 1)
+#define ml_set_seq(ml) (ml->seq = atomic_inc_return(&ml_seq) - 1)
+#define ml_set_seq_if_needed(ml) do {	\
+	if (ml->seq == UINT_MAX)	\
+		ml_set_seq(ml);		\
+} while (0)
+#else /* !defined(CONFIG_DEBUG_FS) */
+#define ml_set_seq_if_needed(ml)
+#endif
 
+#ifdef CONFIG_DEBUG_FS
 static int dfs_range_get(void *data, u64 *val)
 {
 	*val = (int)data;
@@ -71,42 +86,68 @@ static int dfs_range_get(void *data, u64 *val)
 static struct dentry *root_dentry;
 DEFINE_SIMPLE_ATTRIBUTE(range_fops, dfs_range_get, NULL, "%Ld\n");
 
-#define for_each_memlayout_range(rme) \
-	for (rme = rb_entry(rb_first(&pfn_to_node_map), typeof(*rme), node); \
+#define ml_for_each_range(ml, rme) \
+	for (rme = rb_entry(rb_first(ml->root), typeof(*rme), node); \
 	     &rme->node;						     \
 	     rme = rb_entry(rb_next(&rme->node), typeof(*rme), node))
 
-static void memlayout_debugfs_create(struct dentry *parent, const char *layout_name)
+static void _ml_dbgfs_add(struct dentry *base, struct rangemap_entry *rme, char *name)
 {
-	struct rangemap_entry *rme;
-	char name[2 * BITS_PER_LONG / 4 + 2];
-	struct dentry *rd, *base = debugfs_create_dir(layout_name, parent);
-	if (!base)
+	sprintf(name, "%lX-%lX", rme->pfn_start, rme->pfn_end);
+	rd = debugfs_create_file(name, 0400, base, (void *)rme->nid, &range_fops);
+	if (!rd) {
+		pr_devel("debugfs: failed to create {%lX-%lX}:%d", rme->pfn_start, rme->pfn_end, rme->nid);
 		return;
-
-	rcu_read_lock();
-	for_each_memlayout_range(rme) {
-		sprintf(name, "%lX-%lX", rme->pfn_start, rme->pfn_end);
-		rd = debugfs_create_file(name, 0400, base, (void *)rme->nid, &range_fops);
-		if (!rd) {
-			pr_devel("debugfs: failed to create {%lX-%lX}:%d", rme->pfn_start, rme->pfn_end, rme->nid);
-			return;
-		} else
-			pr_devel("debugfs: created {%lX-%lX}:%d", rme->pfn_start, rme->pfn_end, rme->nid);
-	}
-	rcu_read_unlock();
+	} else
+		pr_devel("debugfs: created {%lX-%lX}:%d", rme->pfn_start, rme->pfn_end, rme->nid);
 }
 
-#define BITS_PER_INT (sizeof(int) * 8)
-static void ml_dbgfs_update(void)
+#define ML_NAME_SZ  (DIV_ROUND_UP(sizeof(unsigned) * 8, 3) + 1 + strlen("layout."))
+
+static void ml_dbgfs_add(struct memlayout *ml, struct rangemap_entry *rme)
 {
-	int seq = ml_seq_get();
-	char name[BITS_PER_INT / 4 + 1 + strlen("layout.")];
-	sprintf(name, "layout.%d", seq);
-	memlayout_debugfs_create(root_dentry, name);
+	char name[ML_NAME_SZ];
+	_ml_dbgfs_add(ml->d, rme, name);
+}
+
+static void _ml_dbgfs_update(const char *name)
+{
 	/* XXX: remove old symlink? or will this overwrite? (overwriting would
 	 * be nice) */
 	debugfs_create_symlink("current", root_dentry, name);
+}
+
+static void ml_dbgfs_update(struct memlayout *ml)
+{
+	char name[ML_NAME_SZ];
+	sprintf(name, "layout.%u", ml->seq); /* potentially unsafe */
+	_ml_dbgfs_update(name);
+}
+
+/* create the entire current memlayout.
+ * only used for the layout which exsists prior to fs initialization
+ */
+static void ml_dbgfs_create(void)
+{
+	struct rangemap_entry *rme;
+	char name[max(2 * BITS_PER_LONG / 4 + 2, ML_NAME_SZ)];
+
+	sprintf(name, "layout.%u", seq);
+	struct dentry *rd, *base = debugfs_create_dir(name, root_dentry);
+	if (!base)
+		return;
+	ml_update_lock();
+	pfn_to_node_map->d = base; /* really should make a copy & reassign */
+	ml_update_unlock();
+
+	rcu_read_lock();
+	ml_for_each_range(pfn_to_node_map, rme) {
+		_ml_dbgfs_add(base, rme, name);
+	}
+	rcu_read_unlock();
+	_ml_dbgfs_update(name); /* could be racy, really should do a mutex-lock,
+				  check if we are still the layout, then
+				  ml_dbgfs_update(). */
 }
 
 #if defined(CONFIG_DNUMA_USER_WRITE)
@@ -118,8 +159,8 @@ static void ml_dbgfs_update(void)
 		return 0;						\
 	}
 
-DEFINE_DEBUGFS_GET(u32)
-DEFINE_DEBUGFS_GET(u8)
+DEFINE_DEBUGFS_GET(u32);
+DEFINE_DEBUGFS_GET(u8);
 
 #define DEFINE_WATCHED_ATTR(___type, ___var)			\
 	static int ___var ## _watch_set(void *data, u64 val)	\
@@ -154,6 +195,7 @@ static int dnuma_user_node_watch(u32 old_val, u32 new_val)
 static int dnuma_user_commit_watch(u8 old_val, u8 new_val)
 {
 	memlayout_commit(&user_ml);
+	ml_init(&user_ml);
 	return 0;
 }
 
@@ -185,7 +227,8 @@ static int __init memlayout_debugfs_init(void)
 			&dnuma_user_commit, &dnuma_user_commit_fops);
 #endif
 
-	ml_dbgfs_update();
+	/* uses root_dentry */
+	ml_dbgfs_create();
 
 	return 0;
 }
@@ -266,6 +309,7 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start, unsigned 
 	rb_link_node(&rme->node, parent, new);
 	rb_insert_color(&rme->node, &ml->root);
 
+	ml_dbgfs_add(ml, rme);
 	return 0;
 }
 
@@ -362,18 +406,23 @@ void memlayout_commit_initial(struct memlayout *ml)
 void memlayout_commit(struct memlayout *ml)
 {
 	struct rb_node *root;
-	unsigned long flags;
 
-	spin_lock_irqsave(&update_lock, flags);
-	root = rcu_dereference_protected(pfn_to_node_map.rb_node,
+	ml_update_lock();
+	ml_dbgfs_update(ml);
+
+	root = rcu_dereference_protected(pfn_to_node_map.root.rb_node,
 					 spin_is_locked(&update_lock));
-	rcu_assign_pointer(pfn_to_node_map.rb_node,
+	rcu_assign_pointer(pfn_to_node_map.root.rb_node,
 			   ml->root.rb_node);
-	ml_dbgfs_update();
-	spin_unlock_irqrestore(&update_lock, flags);
+	pfn_to_node_map.seq = ml->seq;
+	pfn_to_node_map.d   = ml->d;
+
+	ml_update_unlock();
+
+	/* garbage collect old layouts ?? */
 
 	synchronize_rcu();
-	ml->root.rb_node = NULL;
+	ml_init(ml); /* clear the old memlayout for new use */
 	free_rme_tree(root);
 }
 
