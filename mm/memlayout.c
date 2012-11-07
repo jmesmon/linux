@@ -148,7 +148,7 @@ static void ml_dbgfs_create_initial(void)
 
 	old_ml = rcu_dereference_protected(pfn_to_node_map,
 			ml_update_is_locked());
-	if (WARN(!old_ml))
+	if (WARN_ON(!old_ml))
 		goto e_out;
 	*new_ml = *old_ml;
 
