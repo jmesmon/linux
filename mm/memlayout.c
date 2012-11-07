@@ -169,7 +169,7 @@ static void ml_dbgfs_create_initial(void)
 
 	synchronize_rcu();
 	kfree(old_ml);
-
+	return;
 e_out:
 	ml_update_unlock();
 	kfree(new_ml);
