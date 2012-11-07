@@ -16,10 +16,13 @@ static inline void dnuma_move_to_new_ml(struct memlayout *new_ml)
 {
 	/* allocate a per node list of pages */
 
-	/* for each node */
 	int nid;
+	/* XXX: locking considerations:
+	 *  - what can cause the hotplugging of a node? Do we just need to lock_memory_hotplug()?
+	 *  - pgdat_resize_lock()
+	 *    - "Nests above zone->lock and zone->size_seqlock."
+	 *  - zone_span_seq*() & zone_span_write*() */
 	for_each_online_node(nid) {
-		/* XXX: locking considerations? */
 		/*	allocate a new pageblock_flags
 		 *	lock the node
 		 *		pull out pages that don't belong to it anymore, put them on the list.
