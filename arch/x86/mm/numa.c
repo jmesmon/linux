@@ -53,7 +53,7 @@ void __init arch_memlayout_init(void)
 	}
 	pr_devel("  done adding ranges from numa_meminfo\n");
 
-	memlayout_commit_initial(&ml);
+	memlayout_commit_initial(ml);
 }
 #endif
 
