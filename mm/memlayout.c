@@ -153,6 +153,10 @@ static void ml_dbgfs_create_initial(void)
 	*new_ml = *old_ml;
 
 	ml_layout_name(new_ml, name);
+
+	if (WARN_ON(new_ml->d))
+		goto e_out;
+
 	base = debugfs_create_dir(name, root_dentry);
 	if (!base)
 		goto e_out;
