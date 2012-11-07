@@ -344,8 +344,12 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start, unsigned 
 int memlayout_pfn_to_nid_no_pageflags(unsigned long pfn)
 {
 	struct rb_node *node;
+	struct memlayout *ml;
 	rcu_read_lock();
-	node = rcu_dereference(pfn_to_node_map)->root.rb_node;
+	ml = rcu_dereference(pfn_to_node_map);
+	if (!ml)
+		goto out;
+	node = ml->root.rb_node;
 	while(node) {
 		struct rangemap_entry *rme = rb_entry(node, typeof(*rme), node);
 		bool gts = rme->pfn_start <= pfn;
@@ -361,6 +365,7 @@ int memlayout_pfn_to_nid_no_pageflags(unsigned long pfn)
 		}
 	}
 
+out:
 	rcu_read_unlock();
 	return NUMA_NO_NODE;
 }
