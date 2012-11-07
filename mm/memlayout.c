@@ -70,10 +70,13 @@ static DEFINE_SPINLOCK(update_lock);
 
 #ifdef CONFIG_DEBUG_FS
 static atomic_t ml_seq = ATOMIC_INIT(0);
-static inline void ml_dbgfs_init(struct memlayout *ml)
+static struct dentry *root_dentry;
+#define ML_LAYOUT_NAME_SZ ((size_t)(DIV_ROUND_UP(sizeof(unsigned) * 8, 3) + 1 + strlen("layout.")))
+#define ML_REGION_NAME_SZ ((size_t)(2 * BITS_PER_LONG / 4 +2))
+
+static void ml_layout_name(struct memlayout *ml, char *name)
 {
-	ml->seq = atomic_inc_return(&ml_seq) - 1;
-	ml->d = NULL;
+	sprintf(name, "layout.%u", ml->seq);
 }
 
 static int dfs_range_get(void *data, u64 *val)
@@ -81,13 +84,7 @@ static int dfs_range_get(void *data, u64 *val)
 	*val = (int)data;
 	return 0;
 }
-static struct dentry *root_dentry;
 DEFINE_SIMPLE_ATTRIBUTE(range_fops, dfs_range_get, NULL, "%Ld\n");
-
-#define ml_for_each_range(ml, rme) \
-	for (rme = rb_entry(rb_first(&ml->root), typeof(*rme), node); \
-	     &rme->node;						     \
-	     rme = rb_entry(rb_next(&rme->node), typeof(*rme), node))
 
 static void _ml_dbgfs_create_range(struct dentry *base, struct rangemap_entry *rme, char *name)
 {
@@ -103,19 +100,6 @@ static void _ml_dbgfs_create_range(struct dentry *base, struct rangemap_entry *r
 				rme->pfn_start, rme->pfn_end, rme->nid);
 }
 
-#define ML_LAYOUT_NAME_SZ ((size_t)(DIV_ROUND_UP(sizeof(unsigned) * 8, 3) + 1 + strlen("layout.")))
-#define ML_REGION_NAME_SZ ((size_t)(2 * BITS_PER_LONG / 4 +2))
-static void ml_layout_name(struct memlayout *ml, char *name)
-{
-	sprintf(name, "layout.%u", ml->seq);
-}
-
-static void ml_dbgfs_create_range(struct memlayout *ml, struct rangemap_entry *rme)
-{
-	char name[ML_REGION_NAME_SZ];
-	_ml_dbgfs_create_range(ml->d, rme, name);
-}
-
 static void _ml_dbgfs_set_current(struct memlayout *ml, char *name)
 {
 	ml_layout_name(ml, name);
@@ -124,63 +108,16 @@ static void _ml_dbgfs_set_current(struct memlayout *ml, char *name)
 	debugfs_create_symlink("current", root_dentry, name);
 }
 
-static void ml_dbgfs_set_current(struct memlayout *ml)
+static void ml_dbgfs_create_layout_assume_root(struct memlayout *ml)
 {
 	char name[ML_LAYOUT_NAME_SZ];
-	_ml_dbgfs_set_current(ml, name);
-}
-
-/* create the entire current memlayout.
- * only used for the layout which exsists prior to fs initialization
- */
-static void ml_dbgfs_create_initial(void)
-{
-	struct rangemap_entry *rme;
-	struct dentry *base;
-	char name[max(ML_REGION_NAME_SZ, ML_LAYOUT_NAME_SZ)];
-	struct memlayout *old_ml, *new_ml;
-
-	new_ml = kmalloc(sizeof(*new_ml), GFP_KERNEL);
-	if (WARN(!new_ml, "memlayout allocation failed: "))
-		return;
-
-	ml_update_lock();
-
-	old_ml = rcu_dereference_protected(pfn_to_node_map,
-			ml_update_is_locked());
-	if (WARN_ON(!old_ml))
-		goto e_out;
-	*new_ml = *old_ml;
-
-	ml_layout_name(new_ml, name);
-
-	if (WARN_ON(new_ml->d))
-		goto e_out;
-
-	base = debugfs_create_dir(name, root_dentry);
-	if (!base)
-		goto e_out;
-
-	new_ml->d = base;
-
-	ml_for_each_range(new_ml, rme) {
-		_ml_dbgfs_create_range(base, rme, name);
-	}
-
-	_ml_dbgfs_set_current(new_ml, name);
-	rcu_assign_pointer(pfn_to_node_map, new_ml);
-	ml_update_unlock();
-
-	synchronize_rcu();
-	kfree(old_ml);
-	return;
-e_out:
-	ml_update_unlock();
-	kfree(new_ml);
+	ml_layout_name(ml, name);
+	WARN_ON(!root_dentry);
+	ml->d = debugfs_create_dir(name, root_dentry);
+	WARN_ON(!ml->d);
 }
 
 #if defined(CONFIG_DNUMA_USER_WRITE)
-
 #define DEFINE_DEBUGFS_GET(___type)					\
 	static int debugfs_## ___type ## _get(void *data, u64 *val)	\
 	{								\
@@ -230,25 +167,83 @@ static int dnuma_user_node_watch(u32 old_val, u32 new_val)
 
 static int dnuma_user_commit_watch(u8 old_val, u8 new_val)
 {
-	memlayout_commit(user_ml);
+	if (user_ml)
+		memlayout_commit(user_ml);
 	user_ml = NULL;
 	return 0;
 }
 
 DEFINE_WATCHED_ATTR(u32, dnuma_user_node);
 DEFINE_WATCHED_ATTR(u8, dnuma_user_commit);
-#endif
+#endif /* defined(CONFIG_DNUMA_USER_WRITE) */
 
-static int __init memlayout_debugfs_init(void)
+#define ml_for_each_range(ml, rme) \
+	for (rme = rb_entry(rb_first(&ml->root), typeof(*rme), node); \
+	     &rme->node;						     \
+	     rme = rb_entry(rb_next(&rme->node), typeof(*rme), node))
+
+/* create the entire current memlayout.
+ * only used for the layout which exsists prior to fs initialization
+ */
+static void ml_dbgfs_create_initial_layout(void)
 {
+	struct rangemap_entry *rme;
+	char name[max(ML_REGION_NAME_SZ, ML_LAYOUT_NAME_SZ)];
+	struct memlayout *old_ml, *new_ml;
+
+	new_ml = kmalloc(sizeof(*new_ml), GFP_KERNEL);
+	if (WARN(!new_ml, "memlayout allocation failed: "))
+		return;
+
+	ml_update_lock();
+
+	old_ml = rcu_dereference_protected(pfn_to_node_map,
+			ml_update_is_locked());
+	if (WARN_ON(!old_ml))
+		goto e_out;
+	*new_ml = *old_ml;
+
+	if (WARN_ON(new_ml->d))
+		goto e_out;
+
+	/* this assumption holds as ml_dbgfs_create_initial_layout() (this
+	 * function) is only called by ml_dbgfs_create_root() */
+	ml_dbgfs_create_layout_assume_root(new_ml);
+	if (!new_ml->d)
+		goto e_out;
+
+	ml_for_each_range(new_ml, rme) {
+		_ml_dbgfs_create_range(new_ml->d, rme, name);
+	}
+
+	_ml_dbgfs_set_current(new_ml, name);
+	rcu_assign_pointer(pfn_to_node_map, new_ml);
+	ml_update_unlock();
+
+	synchronize_rcu();
+	kfree(old_ml);
+	return;
+e_out:
+	ml_update_unlock();
+	kfree(new_ml);
+}
+
+/* returns 0 if root_dentry has been created */
+static int ml_dbgfs_create_root(void)
+{
+	if (root_dentry)
+		return 0;
+
 	if (!debugfs_initialized()) {
 		pr_devel("debugfs not registered or disabled.");
-		return 0;
+		return -EINVAL;
 	}
 
 	root_dentry = debugfs_create_dir("memlayout", NULL);
-	if (!root_dentry)
-		return 0;
+	if (!root_dentry) {
+		pr_devel("root dir creation failed");
+		return -EINVAL;
+	}
 
 	/* place in a different dir: try to keep memlayout & dnuma seperate */
 	debugfs_create_u64("moved-pages", 0400, root_dentry, &dnuma_moved_page_ct);
@@ -264,18 +259,53 @@ static int __init memlayout_debugfs_init(void)
 #endif
 
 	/* uses root_dentry */
-	ml_dbgfs_create_initial();
+	ml_dbgfs_create_initial_layout();
 
 	return 0;
 }
 
-static void __exit memlayout_debugfs_exit(void)
+static void ml_dbgfs_create_layout(struct memlayout *ml)
 {
-	debugfs_remove_recursive(root_dentry);
+	if (ml_dbgfs_create_root()) {
+		ml->d = NULL;
+		return;
+	}
+	ml_dbgfs_create_layout_assume_root(ml);
 }
 
-module_init(memlayout_debugfs_init);
-module_exit(memlayout_debugfs_exit);
+static int ml_dbgfs_init_root(void)
+{
+	ml_dbgfs_create_root();
+	return 0;
+}
+
+static void ml_dbgfs_init(struct memlayout *ml)
+{
+	ml->seq = atomic_inc_return(&ml_seq) - 1;
+	ml_dbgfs_create_layout(ml);
+}
+
+static void ml_dbgfs_create_range(struct memlayout *ml, struct rangemap_entry *rme)
+{
+	char name[ML_REGION_NAME_SZ];
+	if (ml->d)
+		_ml_dbgfs_create_range(ml->d, rme, name);
+}
+
+static void ml_dbgfs_set_current(struct memlayout *ml)
+{
+	char name[ML_LAYOUT_NAME_SZ];
+	_ml_dbgfs_set_current(ml, name);
+}
+
+static void __exit ml_dbgfs_exit(void)
+{
+	debugfs_remove_recursive(root_dentry);
+	root_dentry = NULL;
+}
+
+module_init(ml_dbgfs_init_root);
+module_exit(ml_dbgfs_exit);
 #else
 #error "FAIL?"
 #endif
