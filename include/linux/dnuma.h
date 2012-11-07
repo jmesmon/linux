@@ -12,24 +12,29 @@ extern u64 dnuma_moved_page_ct;
 extern spinlock_t dnuma_stats_lock;
 
 /* called by memlayout_commit() when a new memory layout takes effect. */
-static inline void dnuma_make_changes(struct memlayout *new_ml)
+static inline void dnuma_move_to_new_ml(struct memlayout *new_ml)
 {
 	/* allocate a per node list of pages */
 
 	/* for each node */
-	/*	allocate a new pageblock_flags
-	 *	lock the node
-	 *		pull out pages that don't belong to it anymore, put them on the list.
-	 *		give it a new pageblock_flags.
-	 *		update spanned_pages, start pfn, free pages
-	 *	unlock the node
-	 *	free old pageblock_flags
-	 */
+	int nid;
+	for_each_online_node(nid) {
+		/* XXX: locking considerations? */
+		/*	allocate a new pageblock_flags
+		 *	lock the node
+		 *		pull out pages that don't belong to it anymore, put them on the list.
+		 *		give it a new pageblock_flags.
+		 *		update spanned_pages, start pfn, free pages
+		 *	unlock the node
+		 *	free old pageblock_flags
+		 */
+	}
 
-	/* for each node */
-	/*	add pages that are new to the node (and removed in the previous
-	 *	iteration from other nodes) to it's free lists. (appropriate locking).
-	 */
+	for_each_online_node(nid) {
+		/* add pages that are new to the node (and removed in the previous
+		 * iteration from other nodes) to it's free lists. (appropriate locking).
+		 */
+	}
 }
 
 /* moves a page when it is being freed (and thus was not moved by
