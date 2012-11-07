@@ -70,7 +70,7 @@ static DEFINE_SPINLOCK(update_lock);
 
 #ifdef CONFIG_DEBUG_FS
 static atomic_t ml_seq = ATOMIC_INIT(0);
-static struct dentry *root_dentry;
+static struct dentry *root_dentry, *current_dentry;
 #define ML_LAYOUT_NAME_SZ ((size_t)(DIV_ROUND_UP(sizeof(unsigned) * 8, 3) + 1 + strlen("layout.")))
 #define ML_REGION_NAME_SZ ((size_t)(2 * BITS_PER_LONG / 4 +2))
 
@@ -100,12 +100,14 @@ static void _ml_dbgfs_create_range(struct dentry *base, struct rangemap_entry *r
 				rme->pfn_start, rme->pfn_end, rme->nid);
 }
 
+/* Must be called under ml_update_lock() */
 static void _ml_dbgfs_set_current(struct memlayout *ml, char *name)
 {
 	ml_layout_name(ml, name);
-	/* XXX: remove old symlink? or will this overwrite? (overwriting would
-	 * be nice) */
-	debugfs_create_symlink("current", root_dentry, name);
+
+	if (current_dentry)
+		debugfs_remove(current_dentry);
+	current_dentry = debugfs_create_symlink("current", root_dentry, name);
 }
 
 static void ml_dbgfs_create_layout_assume_root(struct memlayout *ml)
