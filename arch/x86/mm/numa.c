@@ -40,15 +40,18 @@ void __init arch_memlayout_init(void)
 	struct numa_meminfo *mi = &numa_meminfo;
 	int i;
 	struct numa_memblk *blk;
-	DEFINE_MEMLAYOUT(ml);
-	pr_devel("memlayout: adding ranges from numa_meminfo\n");
+	struct memlayout *ml = ml_create();
+	if (WARN_ON(ml))
+		return;
+
+	pr_devel("x86/memlayout: adding ranges from numa_meminfo\n");
 	for (i = 0; i < mi->nr_blks; i++) {
 		blk = mi->blk + i;
-		pr_devel("           adding range {%LX[%LX]-%LX[%LX]}:%d\n",
+		pr_devel("  adding range {%LX[%LX]-%LX[%LX]}:%d\n",
 			 PFN_DOWN(blk->start), blk->start, PFN_DOWN(blk->end - PAGE_SIZE / 2 - 1), blk->end - 1, blk->nid);
-		memlayout_new_range(&ml, PFN_DOWN(blk->start), PFN_DOWN(blk->end - PAGE_SIZE / 2 - 1), blk->nid);
+		memlayout_new_range(ml, PFN_DOWN(blk->start), PFN_DOWN(blk->end - PAGE_SIZE / 2 - 1), blk->nid);
 	}
-	pr_devel("           done adding ranges from numa_meminfo\n");
+	pr_devel("  done adding ranges from numa_meminfo\n");
 
 	memlayout_commit_initial(&ml);
 }
