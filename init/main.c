@@ -464,7 +464,6 @@ static void __init mm_init(void)
 	percpu_init_late();
 	pgtable_cache_init();
 	vmalloc_init();
-	arch_memlayout_init();
 }
 
 asmlinkage void __init start_kernel(void)
@@ -618,6 +617,7 @@ asmlinkage void __init start_kernel(void)
 	security_init();
 	dbg_late_init();
 	vfs_caches_init(totalram_pages);
+	arch_memlayout_init();
 	signals_init();
 	/* rootfs populating might need page-writeback */
 	page_writeback_init();
