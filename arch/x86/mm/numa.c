@@ -41,7 +41,7 @@ void __init arch_memlayout_init(void)
 	int i;
 	struct numa_memblk *blk;
 	struct memlayout *ml = ml_create();
-	if (WARN_ON(ml))
+	if (WARN_ON(!ml))
 		return;
 
 	pr_devel("x86/memlayout: adding ranges from numa_meminfo\n");
