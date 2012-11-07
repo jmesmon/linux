@@ -148,15 +148,14 @@ static void ml_dbgfs_create_initial(void)
 
 	old_ml = rcu_dereference_protected(pfn_to_node_map,
 			ml_update_is_locked());
+	if (WARN(!old_ml))
+		goto e_out;
 	*new_ml = *old_ml;
 
 	ml_layout_name(new_ml, name);
 	base = debugfs_create_dir(name, root_dentry);
-	if (!base) {
-		kfree(new_ml);
-		ml_update_unlock();
-		return;
-	}
+	if (!base)
+		goto e_out;
 
 	new_ml->d = base;
 
@@ -170,6 +169,10 @@ static void ml_dbgfs_create_initial(void)
 
 	synchronize_rcu();
 	kfree(old_ml);
+
+e_out:
+	ml_update_unlock();
+	kfree(new_ml);
 }
 
 #if defined(CONFIG_DNUMA_USER_WRITE)
