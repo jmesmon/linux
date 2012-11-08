@@ -93,10 +93,10 @@ static void _ml_dbgfs_create_range(struct dentry *base, struct rangemap_entry *r
 	rd = debugfs_create_file(name, 0400, base,
 				(void*)rme->nid, &range_fops);
 	if (!rd)
-		pr_devel("debugfs: failed to create {%lX-%lX}:%d",
+		pr_devel("debugfs: failed to create {%lX-%lX}:%d\n",
 				rme->pfn_start, rme->pfn_end, rme->nid);
 	else
-		pr_devel("debugfs: created {%lX-%lX}:%d",
+		pr_devel("debugfs: created {%lX-%lX}:%d\n",
 				rme->pfn_start, rme->pfn_end, rme->nid);
 }
 
@@ -237,13 +237,13 @@ static int ml_dbgfs_create_root(void)
 		return 0;
 
 	if (!debugfs_initialized()) {
-		pr_devel("debugfs not registered or disabled.");
+		pr_devel("debugfs not registered or disabled.\n");
 		return -EINVAL;
 	}
 
 	root_dentry = debugfs_create_dir("memlayout", NULL);
 	if (!root_dentry) {
-		pr_devel("root dir creation failed");
+		pr_devel("root dir creation failed\n");
 		return -EINVAL;
 	}
 
@@ -316,7 +316,7 @@ static int find_insertion_point(struct memlayout *ml, unsigned long pfn_start, u
 {
 	struct rb_node **new = &ml->root.rb_node, *parent = NULL;
 	struct rangemap_entry *rme;
-	pr_debug("adding range: {%lX-%lX}:%d", pfn_start, pfn_end, nid);
+	pr_debug("adding range: {%lX-%lX}:%d\n", pfn_start, pfn_end, nid);
 	while(*new) {
 		rme = rb_entry(*new, typeof(*rme), node);
 
@@ -328,7 +328,7 @@ static int find_insertion_point(struct memlayout *ml, unsigned long pfn_start, u
 		else {
 			/* an embedded region, need to use an interval or
 			 * sequence tree. */
-			pr_warn("tried to embed {%lX,%lX}:%d inside {%lX-%lX}:%d",
+			pr_warn("tried to embed {%lX,%lX}:%d inside {%lX-%lX}:%d\n",
 				 pfn_start, pfn_end, nid,
 				 rme->pfn_start, rme->pfn_end, rme->nid);
 			return 1;
@@ -522,11 +522,11 @@ int __init_memblock memlayout_init_from_memblock(void)
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, &nid) {
 		int r = memlayout_new_range(ml, start, end - 1, nid);
 		if (r) {
-			pr_err("failed to add range [%lx, %lx] in node %d to mapping",
+			pr_err("failed to add range [%lx, %lx] in node %d to mapping\n",
 					start, end, nid);
 			errs++;
 		} else
-			pr_devel("added ranged [%lx, %lx] in node %d",
+			pr_devel("added ranged [%lx, %lx] in node %d\n",
 					start, end, nid);
 	}
 
