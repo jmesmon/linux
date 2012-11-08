@@ -431,20 +431,32 @@ static struct rb_node *rb_next_postorder(struct rb_node *node)
 		return parent;
 }
 
-static struct rb_node *rb_least(struct rb_node *node)
+static struct rb_node *rb_first_postorder(struct rb_node *node)
 {
 	struct rb_node *new = node;
 	if (!node)
 		return NULL;
-	while (new->rb_left)
-		new = new->rb_left;
+
+	for (;;) {
+		if (new->rb_left) {
+			new = new->rb_left;
+			continue;
+		}
+
+		if (new->rb_right) {
+			new = new->rb_right;
+			continue;
+		}
+
+		break;
+	}
 	return new;
 }
 
 static void free_rme_tree(struct rb_node *root)
 {
 	struct rb_node *node, *next;
-	for (node = rb_least(root), next = rb_next_postorder(node);
+	for (node = rb_first_postorder(root), next = rb_next_postorder(node);
 	     node;
 	     node = next, next = rb_next_postorder(node)) {
 		struct rangemap_entry *rme = rb_entry(node, typeof(*rme), node);
