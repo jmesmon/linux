@@ -194,7 +194,7 @@ static void ml_dbgfs_create_initial_layout(void)
 	struct memlayout *old_ml, *new_ml;
 
 	new_ml = kmalloc(sizeof(*new_ml), GFP_KERNEL);
-	if (WARN(!new_ml, "memlayout allocation failed: "))
+	if (WARN(!new_ml, "memlayout allocation failed\n"))
 		return;
 
 	ml_update_lock();
@@ -469,7 +469,7 @@ void memlayout_commit_initial(struct memlayout *ml)
 	struct memlayout *old_ml;
 	ml_update_lock();
 	old_ml = rcu_dereference_protected(pfn_to_node_map, ml_update_is_locked());
-	if (WARN(old_ml, "memlayout_commit_initial is not first: ")) {
+	if (WARN(old_ml, "memlayout_commit_initial is not first\n")) {
 		ml_update_unlock();
 		ml_destroy(ml);
 	} else {
