@@ -6,7 +6,7 @@
  */
 
 #ifdef CONFIG_MMU
-#error need to prove a real asm/page.h
+#error "Arch needs to provide a real asm/page.h"
 #endif
 
 
