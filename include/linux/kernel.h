@@ -684,7 +684,7 @@ static inline void ftrace_dump(enum ftrace_dump_mode oops_dump_mode) { }
 #include <linux/bug.h>
 #define container_of(ptr, type, member) ({			 \
 	const typeof( ((type *)0)->member ) *__mptr = (ptr);	 \
-	WARN(!__mptr, "container_of was used on a NULL pointer");\
+	WARN(!__mptr, "container_of was used on a NULL pointer\n");\
 	(type *)( (char *)__mptr - offsetof(type,member) );})
 
 /* Trap pasters of __FUNCTION__ at compile-time */
