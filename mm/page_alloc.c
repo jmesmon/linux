@@ -927,7 +927,7 @@ int move_freepages(struct zone *zone,
 	int pages_moved = 0;
 	int zone_nid = zone_to_nid(zone);
 
-#ifndef CONFIG_HOLES_IN_ZONE
+#if !defined(CONFIG_HOLES_IN_ZONE) && !defined(CONFIG_DYNAMIC_NUMA)
 	/*
 	 * page_zone is not safe to call in this context when
 	 * CONFIG_HOLES_IN_ZONE is set. This bug check is probably redundant
