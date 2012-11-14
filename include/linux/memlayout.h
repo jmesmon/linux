@@ -55,11 +55,6 @@ int memlayout_init_from_memblock(void) __init_memblock;
  * initialization. */
 void arch_memlayout_init(void);
 
-static inline struct zone *get_zone(int nid, enum zone_type zonenum)
-{
-	return &NODE_DATA(nid)->node_zones[zonenum];
-}
-
 #else /* ! defined(CONFIG_DYNAMIC_NUMA) */
 
 /* memlayout_new_range() & memlayout_commit*() are purposefully omitted */
