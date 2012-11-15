@@ -143,14 +143,12 @@ config NO_BOOTMEM
 config MEMORY_ISOLATION
 	boolean
 
-# This doesn't quite require memory_hotplug, but it does require
-# the additional locking in 'sturct page' provided by memory hotplug.
 config DYNAMIC_NUMA
 	bool "Dynamic Numa: Allow NUMA layout to change after boot time"
 	depends on NUMA
-	# for tracking the nodes -- should use a better mechanism.
-	# XXX: add support for using the pgdata_t's
-	#depends on HAVE_MEMBLOCK_NODEMAP
+	depends on !DISCONTIGMEM
+	# This doesn't quite require memory_hotplug, but it does require
+	# the additional locking in 'sturct page' provided by memory hotplug.
 	#select MEMORY_HOTPLUG # just for the locking.
 	help
 	 DYNAMIC_NUMA supports the movement of pages between NUMA nodes at
