@@ -1974,16 +1974,8 @@ zonelist_scan:
 try_this_zone:
 		page = buffered_rmqueue(preferred_zone, zone, order,
 						gfp_mask, migratetype);
-		if (page) {
-			int new_nid = memlayout_page_to_nid(page), cur_nid = page_to_nid(page);
-			if (new_nid != cur_nid) {
-				/* do something */
-				pr_debug("allocated page %pK from node %d which belongs in node %d",
-						page, cur_nid, new_nid);
-			}
-
+		if (page)
 			break;
-		}
 
 this_zone_full:
 		if (NUMA_BUILD)
