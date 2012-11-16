@@ -494,7 +494,9 @@ static inline int page_is_buddy(struct page *page, struct page *buddy,
 		return 0;
 
 #ifdef CONFIG_DYNAMIC_NUMA /* implies !defined(NODE_NOT_IN_PAGE_FLAGS) */
-	if (memlayout_page_to_nid(page) != memlayout_page_to_nid(buddy))
+	/* necissary to prevent unintended movement of nodes between zones,
+	 * which could corrupt free lists */
+	if (page_to_nid(page) != page_to_nid(buddy))
 		return 0;
 #endif
 
