@@ -1309,7 +1309,8 @@ void mark_free_pages(struct zone *zone)
  */
 void free_hot_cold_page(struct page *page, int cold)
 {
-	struct zone *zone = dnuma_move_free_page_zone(page);
+	int dest_nid;
+	struct zone *zone = page_zone(page);
 	struct per_cpu_pages *pcp;
 	unsigned long flags;
 	int migratetype;
@@ -1321,6 +1322,12 @@ void free_hot_cold_page(struct page *page, int cold)
 	set_freepage_migratetype(page, migratetype);
 	local_irq_save(flags);
 	__count_vm_event(PGFREE);
+
+	if (dnuma_page_needs_move(page, &dest_nid)) {
+		struct zone *dest_zone = dnuma_pre_free_to_new_zone(page, dest_nid);
+		free_one_page(dest_zone, page, 0, migratetype);
+		goto out;
+	}
 
 	/*
 	 * We only track unmovable, reclaimable and movable on pcp lists.
