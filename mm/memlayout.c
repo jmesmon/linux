@@ -1,5 +1,4 @@
 #define pr_fmt(fmt) "memlayout: " fmt
-#define DEBUG 1
 
 #include <linux/atomic.h>
 #include <linux/debugfs.h>
@@ -13,12 +12,6 @@
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
-
-#ifdef CONFIG_DEBUG_FS
-#define HAVE_DEBUG_FS 1
-#else
-#define HAVE_DEBUG_FS 0
-#endif
 
 /* Need to map an index (in this case, memory ranges/regions) to the range set it belongs to.
  * Overlapping is not allowed, so iterval/sequence trees are not needed
@@ -56,19 +49,111 @@ struct rangemap_entry {
 /* protected by update_lock */
 static __rcu struct memlayout *pfn_to_node_map;
 
-#ifdef CONFIG_DEBUG_FS
+#ifdef CONFIG_DNUMA_DEBUGFS
 static DEFINE_MUTEX(update_lock);
 # define ml_update_lock()   mutex_lock(&update_lock)
 # define ml_update_unlock() mutex_unlock(&update_lock)
 # define ml_update_is_locked() mutex_is_locked(&update_lock)
-#else /* !defined(CONFIG_DEBUG_FS) */
+#else /* !defined(CONFIG_DNUMA_DEBUGFS) */
 static DEFINE_SPINLOCK(update_lock);
 # define ml_update_lock()   spin_lock(&update_lock)
 # define ml_update_unlock() spin_unlock(&update_lock)
 # define ml_update_is_locked() spin_is_locked(&update_lock)
 #endif
 
-#ifdef CONFIG_DEBUG_FS
+/* always visit the parent after it's children */
+static struct rb_node *rb_next_postorder(struct rb_node *node)
+{
+	struct rb_node *new, *parent;
+	if (!node)
+		return NULL;
+	parent = rb_parent(node);
+
+	/* If we're sitting on node, we've already seen our children */
+	if (parent && node == parent->rb_left) {
+		/* If we are the parent's left node, go to the parent's right
+		 * node then all the way to the left */
+		new = parent->rb_right;
+		while(new->rb_left)
+			new = new->rb_left;
+		return new;
+	} else
+		/* Otherwise we are the parent's right node, and the parent
+		 * should be next */
+		return parent;
+}
+
+static struct rb_node *rb_first_postorder(struct rb_node *node)
+{
+	struct rb_node *new = node;
+	if (!node)
+		return NULL;
+
+	for (;;) {
+		if (new->rb_left) {
+			new = new->rb_left;
+			continue;
+		}
+
+		if (new->rb_right) {
+			new = new->rb_right;
+			continue;
+		}
+
+		break;
+	}
+	return new;
+}
+
+static void free_rme_tree(struct rb_node *root)
+{
+	struct rb_node *node, *next;
+	for (node = rb_first_postorder(root), next = rb_next_postorder(node);
+	     node;
+	     node = next, next = rb_next_postorder(node)) {
+		struct rangemap_entry *rme = rb_entry(node, typeof(*rme), node);
+		kfree(rme);
+	}
+}
+
+static void ml_destroy_mem(struct memlayout *ml)
+{
+	free_rme_tree(ml->root.rb_node);
+	kfree(ml);
+}
+
+#if CONFIG_DNUMA_BACKLOG > 0
+/* Fixed size backlog */
+#include <linux/kfifo.h>
+DEFINE_KFIFO(ml_backlog, struct memlayout *, CONFIG_DNUMA_BACKLOG);
+static inline void ml_backlog_feed(__unused struct memlayout *ml)
+{
+	if (kfifo_is_full(&ml_backlog)) {
+		struct memlayout *old_ml;
+		kfifo_get(&ml_backlog, &old_ml);
+		ml_destroy(ml);
+	}
+
+	kfifo_put(&ml_backlog, &ml);
+}
+#elif CONFIG_DNUMA_BACKLOG == -1
+/* Unlimited backlog */
+static inline void ml_backlog_feed(struct memlayout *ml)
+{
+	/* we never use the rme_tree, so destroy it */
+	ml_destroy_mem(ml);
+}
+#elif CONFIG_DNUMA_BACKLOG == 0
+/* No backlog */
+static inline void ml_backlog_feed(struct memlayout *ml)
+{
+	ml_destroy(ml);
+}
+#else
+# error "Invalid CONFIG_DNUMA_BACKLOG value"
+#endif
+
+#ifdef CONFIG_DNUMA_DEBUGFS
 static atomic_t ml_seq = ATOMIC_INIT(0);
 static struct dentry *root_dentry, *current_dentry;
 #define ML_LAYOUT_NAME_SZ ((size_t)(DIV_ROUND_UP(sizeof(unsigned) * 8, 3) + 1 + strlen("layout.")))
@@ -340,24 +425,6 @@ static int find_insertion_point(struct memlayout *ml, unsigned long pfn_start, u
 	return 0;
 }
 
-#if 0
-static int early_new_range(struct rangemap_entry *rme)
-{
-	struct rb_node **new, *parent;
-	if (find_insertion_point(rme->pfn_start, rme->pfn_end, rme->nid, &new, &parent))
-		return 1;
-
-	rb_link_node(&rme->node, parent, new);
-	rb_insert_color(&rme->node, &pfn_to_node_map);
-	return 0;
-}
-
-bool ml_is_empty(struct memlayout *ml)
-{
-	return ml->root.node == NULL;
-}
-#endif
-
 int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start, unsigned long pfn_end, int nid)
 {
 	struct rb_node **new, *parent;
@@ -409,60 +476,6 @@ out:
 	return NUMA_NO_NODE;
 }
 
-/* always visit the parent after it's children */
-static struct rb_node *rb_next_postorder(struct rb_node *node)
-{
-	struct rb_node *new, *parent;
-	if (!node)
-		return NULL;
-	parent = rb_parent(node);
-
-	/* If we're sitting on node, we've already seen our children */
-	if (parent && node == parent->rb_left) {
-		/* If we are the parent's left node, go to the parent's right
-		 * node then all the way to the left */
-		new = parent->rb_right;
-		while(new->rb_left)
-			new = new->rb_left;
-		return new;
-	} else
-		/* Otherwise we are the parent's right node, and the parent
-		 * should be next */
-		return parent;
-}
-
-static struct rb_node *rb_first_postorder(struct rb_node *node)
-{
-	struct rb_node *new = node;
-	if (!node)
-		return NULL;
-
-	for (;;) {
-		if (new->rb_left) {
-			new = new->rb_left;
-			continue;
-		}
-
-		if (new->rb_right) {
-			new = new->rb_right;
-			continue;
-		}
-
-		break;
-	}
-	return new;
-}
-
-static void free_rme_tree(struct rb_node *root)
-{
-	struct rb_node *node, *next;
-	for (node = rb_first_postorder(root), next = rb_next_postorder(node);
-	     node;
-	     node = next, next = rb_next_postorder(node)) {
-		struct rangemap_entry *rme = rb_entry(node, typeof(*rme), node);
-		kfree(rme);
-	}
-}
 
 void memlayout_commit_initial(struct memlayout *ml)
 {
@@ -471,6 +484,7 @@ void memlayout_commit_initial(struct memlayout *ml)
 	old_ml = rcu_dereference_protected(pfn_to_node_map, ml_update_is_locked());
 	if (WARN(old_ml, "memlayout_commit_initial is not first\n")) {
 		ml_update_unlock();
+		/* this layout was never committed, so we don't add it to the backlog */
 		ml_destroy(ml);
 	} else {
 		rcu_assign_pointer(pfn_to_node_map, ml);
@@ -479,10 +493,21 @@ void memlayout_commit_initial(struct memlayout *ml)
 	}
 }
 
+#ifdef CONFIG_DNUMA_DEBUGFS
+static void ml_destroy_dbgfs(struct memlayout *ml)
+{
+	if (ml->d)
+		debugfs_remove_recursive(ml->d);
+}
+#else
+static inline void ml_destroy_dbgfs(__unused struct memlayout *ml)
+{}
+#endif
+
 void ml_destroy(struct memlayout *ml)
 {
-	free_rme_tree(ml->root.rb_node);
-	kfree(ml);
+	ml_destroy_dbgfs(ml);
+	ml_destroy_mem(ml);
 }
 
 struct memlayout *ml_create(void)
@@ -509,7 +534,18 @@ void memlayout_commit(struct memlayout *ml)
 
 	synchronize_rcu();
 
-	ml_destroy(old_ml);
+	ml_backlog_feed(old_ml);
+
+	/* XXX: creep */
+	drain_all_pages();
+
+	/* XXX: disaster in atomicity */
+	lock_memory_hotplug();
+	rcu_read_lock();
+	ml = rcu_dereference(pfn_to_node_map);
+	dnuma_move_to_new_ml(ml);
+	rcu_read_unlock();
+	unlock_memory_hotplug();
 }
 
 int __init_memblock memlayout_init_from_memblock(void)
@@ -526,7 +562,7 @@ int __init_memblock memlayout_init_from_memblock(void)
 					start, end, nid);
 			errs++;
 		} else
-			pr_devel("added ranged [%lx, %lx] in node %d\n",
+			pr_devel("added range [%lx, %lx] in node %d\n",
 					start, end, nid);
 	}
 

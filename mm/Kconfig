@@ -147,11 +147,9 @@ config DYNAMIC_NUMA
 	bool "Dynamic Numa: Allow NUMA layout to change after boot time"
 	depends on NUMA
 	depends on !DISCONTIGMEM
-	# This doesn't quite require memory_hotplug, but it does require
-	# the additional locking in 'sturct page' provided by memory hotplug.
-	#select MEMORY_HOTPLUG # just for the locking.
+	#depends on MEMORY_HOTPLUG # just for the locking.
 	help
-	 DYNAMIC_NUMA supports the movement of pages between NUMA nodes at
+	 Dynamic Numa (DNUMA) allows the movement of pages between NUMA nodes at
 	 run time.
 
 	 Typically, this is used on systems running under a hypervisor which
@@ -159,11 +157,26 @@ config DYNAMIC_NUMA
 	 system, this config option enables Linux to update it's knowledge of
 	 the memory layout.
 
-	 Choose Y if you have one of these systems (XXX: which ones?), otherwise
+	 Choose Y if you have one of these systems (XXX: which ones?), otherwise choose N.
 
-config DNUMA_USER_WRITE
-	bool "Change a system's NUMA layout via debugfs"
+config DNUMA_DEBUGFS
+	bool "Export DNUMA & memlayout internals via debugfs"
 	depends on DYNAMIC_NUMA
+	help
+	 Provides
+
+config DNUMA_BACKLOG
+	int "Number of old memlayouts to keep (0 = None, -1 = unlimited)"
+	depends on DNUMA_DEBUGFS
+	help
+	 Allows access to old memory layouts & statistics in debugfs.
+
+	 Each memlayout will consume some memory, and when set to -1
+	 (unlimited), this can result in unbounded kernel memory use.
+
+config DNUMA_DEBUGFS_WRITE
+	bool "Change NUMA layout via debugfs"
+	depends on DNUMA_DEBUGFS
 	help
 	 Enable the use of <debugfs>/memlayout/{start,end,node,commit}
 
