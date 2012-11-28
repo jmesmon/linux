@@ -204,7 +204,7 @@ static void ml_dbgfs_create_layout_assume_root(struct memlayout *ml)
 	WARN_ON(!ml->d);
 }
 
-#if defined(CONFIG_DNUMA_USER_WRITE)
+#if defined(CONFIG_DNUMA_DEBUGFS_WRITE)
 #define DEFINE_DEBUGFS_GET(___type)					\
 	static int debugfs_## ___type ## _get(void *data, u64 *val)	\
 	{								\
@@ -262,7 +262,7 @@ static int dnuma_user_commit_watch(u8 old_val, u8 new_val)
 
 DEFINE_WATCHED_ATTR(u32, dnuma_user_node);
 DEFINE_WATCHED_ATTR(u8, dnuma_user_commit);
-#endif /* defined(CONFIG_DNUMA_USER_WRITE) */
+#endif /* defined(CONFIG_DNUMA_DEBUGFS_WRITE) */
 
 #define ml_for_each_range(ml, rme) \
 	for (rme = rb_entry(rb_first(&ml->root), typeof(*rme), node); \
@@ -335,7 +335,7 @@ static int ml_dbgfs_create_root(void)
 	/* place in a different dir: try to keep memlayout & dnuma seperate */
 	debugfs_create_u64("moved-pages", 0400, root_dentry, &dnuma_moved_page_ct);
 
-#if defined(CONFIG_DNUMA_USER_WRITE)
+#if defined(CONFIG_DNUMA_DEBUGFS_WRITE)
 	/* Set node last: on write, it adds the range. */
 	debugfs_create_x64("start", 0600, root_dentry, &dnuma_user_start);
 	debugfs_create_x64("end",   0600, root_dentry, &dnuma_user_end);
