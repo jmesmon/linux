@@ -147,6 +147,7 @@ config DYNAMIC_NUMA
 	bool "Dynamic Numa: Allow NUMA layout to change after boot time"
 	depends on NUMA
 	depends on !DISCONTIGMEM
+	select HOLES_IN_ZONE       # true during the transition period.
 	#depends on MEMORY_HOTPLUG # just for the locking.
 	help
 	 Dynamic Numa (DNUMA) allows the movement of pages between NUMA nodes at
