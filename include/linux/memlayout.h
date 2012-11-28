@@ -14,7 +14,7 @@
 
 struct memlayout {
 	struct rb_root root;
-#ifdef CONFIG_DEBUG_FS
+#ifdef CONFIG_DNUMA_DEBUGFS
 	unsigned seq;
 	struct dentry *d;
 #endif
@@ -82,15 +82,7 @@ static inline int memlayout_page_to_nid(struct page *page)
 
 static inline struct zone *memlayout_page_zone(struct page *page)
 {
-#if 0
-	int nid = memlayout_page_to_nid(page);
-	pg_data_t *pg = NODE_DATA(nid);
-	enum zone_type zonenum = page_zonenum(page);
-	struct zone *zone = &pg->node_zones[zonenum];
-	return zone;
-#else
 	return &NODE_DATA(memlayout_page_to_nid(page))->node_zones[page_zonenum(page)];
-#endif
 }
 
 
