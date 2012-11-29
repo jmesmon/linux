@@ -379,7 +379,7 @@ struct zone {
 	unsigned long		compact_cached_free_pfn;
 	unsigned long		compact_cached_migrate_pfn;
 #endif
-#ifdef CONFIG_MEMORY_HOTPLUG
+#if defined CONFIG_MEMORY_HOTPLUG || defined CONFIG_DYNAMIC_NUMA
 	/* see spanned/present_pages for more description */
 	seqlock_t		span_seqlock;
 #endif

@@ -11,40 +11,20 @@
 extern u64 dnuma_moved_page_ct;
 extern spinlock_t dnuma_stats_lock;
 
-/* called by memlayout_commit() when a new memory layout takes effect. */
-static inline void dnuma_move_to_new_ml(struct memlayout *new_ml)
-{
-	/* allocate a per node list of pages */
+/* called by memlayout_commit() _before_ a new memory layout takes effect. */
+void dnuma_online_required_nodes(struct memlayout *new_ml);
 
-	int nid;
-	/* XXX: locking considerations:
-	 *  - what can cause the hotplugging of a node? Do we just need to lock_memory_hotplug()?
-	 *  - pgdat_resize_lock()
-	 *    - "Nests above zone->lock and zone->size_seqlock."
-	 *  - zone_span_seq*() & zone_span_write*() */
-	for_each_online_node(nid) {
-		/*
-		 *	lock the node
-		 *		pull out pages that don't belong to it anymore, put them on the list.
-		 *		update spanned_pages, start pfn, free pages
-		 *	unlock the node
-		 */
-	}
+/* called by memlayout_commit() _after_ a new memory layout takes effect. */
+/* called with lock_memory_hotplug() & rcu_read_lock() both locked */
+void dnuma_move_to_new_ml(struct memlayout *new_ml);
 
-	for_each_online_node(nid) {
-		/* add pages that are new to the node (and removed in the previous
-		 * iteration from other nodes) to it's free lists. (appropriate locking).
-		 */
-	}
-}
+void dnuma_adjust_spanned_pages(unsigned long pfn, struct zone *new_zone,
+		struct pglist_data *new_node);
 
 static inline struct zone *get_zone(int nid, enum zone_type zonenum)
 {
 	return &NODE_DATA(nid)->node_zones[zonenum];
 }
-
-void dnuma_adjust_spanned_pages(unsigned long pfn,
-		struct zone *new_zone, struct pglist_data *new_node);
 
 static inline bool dnuma_page_needs_move(struct page *page, int *dest_nid)
 {
@@ -61,12 +41,32 @@ static inline bool dnuma_page_needs_move(struct page *page, int *dest_nid)
 	return true;
 }
 
+#if CONFIG_DNUMA_DEBUGFS
+static inline void dnuma_update_move_page_stats(void)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&dnuma_stats_lock, flags);
+	if (dnuma_moved_page_ct < (~(u64)0))
+		dnuma_moved_page_ct ++;
+	spin_unlock_irqrestore(&dnuma_stats_lock, flags);
+}
+#else
+static inline void dnuma_update_move_page_stats(void)
+{}
+#endif
+
 static inline struct zone *dnuma_pre_free_to_new_zone(struct page *page, int dest_nid)
 {
 	struct zone *dest_zone = get_zone(dest_nid, page_zonenum(page));
+
+	lock_memory_hotplug(); /* XXX: sleep while atomic! */
+	page_zone(page)->present_pages--;
+	unlock_memory_hotplug(); /* XXX: sleep while atomic. */
+
 	set_page_node(page, dest_nid);
 	dnuma_adjust_spanned_pages(page_to_pfn(page),
 			dest_zone, NODE_DATA(dest_nid));
+	dnuma_update_move_page_stats();
 	return dest_zone;
 }
 
@@ -83,12 +83,7 @@ static inline struct zone *dnuma_move_free_page_zone(struct page *page)
 	if (new_nid == NUMA_NO_NODE)
 		new_nid = old_nid;
 	if (new_nid != old_nid) {
-		unsigned long flags;
 		dnuma_pre_free_to_new_zone(page, new_nid);
-		spin_lock_irqsave(&dnuma_stats_lock, flags);
-		if (dnuma_moved_page_ct < (~(u64)0))
-			dnuma_moved_page_ct ++;
-		spin_unlock_irqrestore(&dnuma_stats_lock, flags);
 	}
 
 	return get_zone(new_nid, zonenum);
