@@ -32,19 +32,6 @@
  * - use a kmem_cache? or a custom allocator to split pages?
  */
 
-/* Datastructure notes:
- * - rbtree of {node, start, end}.
- * - assumes no 'ranges' overlap, which is true for memblock
- *   - not so true for pg_data_t on some archs.
- */
-struct rangemap_entry {
-	struct rb_node node;
-	unsigned long pfn_start;
-	/* @pfn_end: inclusive, stored this way (instead of a count) to make
-	 *           the lookup faster */
-	unsigned long pfn_end;
-	int nid;
-};
 
 /* protected by update_lock */
 static __rcu struct memlayout *pfn_to_node_map;
@@ -263,11 +250,6 @@ static int dnuma_user_commit_watch(u8 old_val, u8 new_val)
 DEFINE_WATCHED_ATTR(u32, dnuma_user_node);
 DEFINE_WATCHED_ATTR(u8, dnuma_user_commit);
 #endif /* defined(CONFIG_DNUMA_DEBUGFS_WRITE) */
-
-#define ml_for_each_range(ml, rme) \
-	for (rme = rb_entry(rb_first(&ml->root), typeof(*rme), node); \
-	     &rme->node;						     \
-	     rme = rb_entry(rb_next(&rme->node), typeof(*rme), node))
 
 /* create the entire current memlayout.
  * only used for the layout which exsists prior to fs initialization
@@ -524,6 +506,10 @@ struct memlayout *ml_create(void)
 void memlayout_commit(struct memlayout *ml)
 {
 	struct memlayout *old_ml;
+
+	/* If more than one memory layout comes along, at worst we'll online
+	 * more nodes than needed */
+	dnuma_online_required_nodes(ml);
 
 	ml_update_lock();
 	ml_dbgfs_set_current(ml);

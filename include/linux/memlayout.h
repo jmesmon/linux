@@ -1,17 +1,18 @@
 #ifndef LINUX_MEMLAYOUT_H_
 #define LINUX_MEMLAYOUT_H_
-#define DEBUG 1
 
 #include <linux/memblock.h> /* __init_memblock */
-#include <linux/types.h>    /* size_t */
 #include <linux/mm.h>       /* NODE_DATA, page_zonenum */
 #include <linux/mmzone.h>   /* pfn_to_nid */
+#include <linux/rbtree.h>
+#include <linux/types.h>    /* size_t */
 
 #ifdef CONFIG_DYNAMIC_NUMA
 # ifdef NODE_NOT_IN_PAGE_FLAGS
 #  error "CONFIG_DYNAMIC_NUMA requires the NODE is in page flags. Try freeing up some flags by decreasing the maximum number of NUMA nodes, or switch to sparsmem-vmemmap"
 # endif
 
+/* IDEA: add nodemask for use in dnuma_online_required_nodes & build in memlayout_new_range()? */
 struct memlayout {
 	struct rb_root root;
 #ifdef CONFIG_DNUMA_DEBUGFS
@@ -19,6 +20,30 @@ struct memlayout {
 	struct dentry *d;
 #endif
 };
+
+/*
+ * - rbtree of {node, start, end}.
+ * - assumes no 'ranges' overlap.
+ */
+struct rangemap_entry {
+	struct rb_node node;
+	unsigned long pfn_start;
+	/* @pfn_end: inclusive, stored this way (instead of a count) to make
+	 *           the lookup faster */
+	unsigned long pfn_end;
+	int nid;
+};
+
+/* FIXME: overflow potential in completion check */
+#define ml_for_each_pfn_in_range(rme, pfn)	\
+	for (pfn = rme->pfn_start;		\
+	     pfn <= rme->pfn_end;		\
+	     pfn++)
+
+#define ml_for_each_range(ml, rme) \
+	for (rme = rb_entry(rb_first(&ml->root), typeof(*rme), node);	\
+	     &rme->node;						\
+	     rme = rb_entry(rb_next(&rme->node), typeof(*rme), node))
 
 struct memlayout *ml_create(void);
 void ml_destroy(struct memlayout *ml);
