@@ -109,15 +109,16 @@ void remove_page_range_from_zone(unsigned long start_pfn, unsigned long end_pfn,
 	spin_unlock_irqrestore(&zone->lock, flags);
 }
 
+/* requires must be called under lock_memory_hotplug() */
 void dnuma_online_required_nodes(struct memlayout *new_ml)
 {
-	/* TODO: build a nodemask */
+	int nid;
 	struct rangemap_entry *rme;
 	ml_for_each_range(new_ml, rme) {
-
+		nid = rme->nid;
+		if (!node_online(nid))
+			mem_online_node(nid);
 	}
-
-	/* TODO: online nodes in that nodemask */
 }
 
 void dnuma_move_to_new_ml(struct memlayout *new_ml)
