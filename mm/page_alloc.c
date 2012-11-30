@@ -444,6 +444,12 @@ static inline void set_page_order(struct page *page, int order)
 	__SetPageBuddy(page);
 }
 
+static inline void set_free_page_order(struct page *page, int order)
+{
+	set_page_private(page, order);
+	VM_BUG_ON(!PageBuddy(page));
+}
+
 static inline void rmv_page_order(struct page *page)
 {
 	__ClearPageBuddy(page);
@@ -540,7 +546,7 @@ static inline int page_is_buddy(struct page *page, struct page *buddy,
 
 static inline void __free_one_page(struct page *page,
 		struct zone *zone, unsigned int order,
-		int migratetype)
+		int migratetype, bool is_free)
 {
 	unsigned long page_idx;
 	unsigned long combined_idx;
@@ -582,7 +588,10 @@ static inline void __free_one_page(struct page *page,
 		page_idx = combined_idx;
 		order++;
 	}
-	set_page_order(page, order);
+	if (!is_free)
+		set_page_order(page, order);
+	else
+		set_free_page_order(page, order);
 
 	/*
 	 * If this is not the largest possible page, check if the buddy
@@ -678,7 +687,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 			list_del(&page->lru);
 			mt = get_freepage_migratetype(page);
 			/* MIGRATE_MOVABLE list may include MIGRATE_RESERVEs */
-			__free_one_page(page, zone, 0, mt);
+			__free_one_page(page, zone, 0, mt, false);
 			trace_mm_page_pcpu_drain(page, 0, mt);
 			if (likely(get_pageblock_migratetype(page) != MIGRATE_ISOLATE)) {
 				__mod_zone_page_state(zone, NR_FREE_PAGES, 1);
@@ -697,11 +706,28 @@ static void free_one_page(struct zone *zone, struct page *page, int order,
 	zone->all_unreclaimable = 0;
 	zone->pages_scanned = 0;
 
-	__free_one_page(page, zone, order, migratetype);
+	__free_one_page(page, zone, order, migratetype, false);
 	if (unlikely(migratetype != MIGRATE_ISOLATE))
 		__mod_zone_freepage_state(zone, 1 << order, migratetype);
 	spin_unlock(&zone->lock);
 }
+
+#ifdef CONFIG_DYNAMIC_NUMA
+static void return_one_page(struct zone *zone, struct page *page, int order,
+				int migratetype)
+{
+	pr_debug("return_one_page: zone %pK page %pK page_zone %pK order %d mgt %d\n",
+			zone, page, page_zone(page), order, migratetype);
+	spin_lock(&zone->lock);
+	zone->all_unreclaimable = 0;
+	zone->pages_scanned = 0;
+
+	__free_one_page(page, zone, order, migratetype, true);
+	if (unlikely(migratetype != MIGRATE_ISOLATE))
+		__mod_zone_freepage_state(zone, 1 << order, migratetype);
+	spin_unlock(&zone->lock);
+}
+#endif
 
 static bool free_pages_prepare(struct page *page, unsigned int order)
 {
@@ -743,6 +769,16 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 	free_one_page(dnuma_move_free_page_zone(page), page, order, migratetype);
 	local_irq_restore(flags);
 }
+
+#ifdef CONFIG_DYNAMIC_NUMA
+void return_pages_to_zone(struct page *page, unsigned int order, struct zone *zone)
+{
+	unsigned long flags;
+	local_irq_save(flags);
+	return_one_page(zone, page, order, get_freepage_migratetype(page));
+	local_irq_restore(flags);
+}
+#endif
 
 /*
  * Read access to zone->managed_pages is safe because it's unsigned long,
