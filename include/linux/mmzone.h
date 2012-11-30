@@ -377,7 +377,7 @@ struct zone {
 	unsigned long		compact_cached_free_pfn;
 	unsigned long		compact_cached_migrate_pfn;
 #endif
-#ifdef CONFIG_MEMORY_HOTPLUG
+#ifdef CONFIG_DYNAMIC_NODES
 	/* see spanned/present_pages for more description */
 	seqlock_t		span_seqlock;
 #endif
@@ -716,7 +716,7 @@ typedef struct pglist_data {
 #ifndef CONFIG_NO_BOOTMEM
 	struct bootmem_data *bdata;
 #endif
-#ifdef CONFIG_MEMORY_HOTPLUG
+#ifdef CONFIG_DYNAMIC_NODES
 	/*
 	 * Must be held any time you expect node_start_pfn, node_present_pages
 	 * or node_spanned_pages stay constant.  Holding this will also
