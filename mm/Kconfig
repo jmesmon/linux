@@ -143,6 +143,10 @@ config NO_BOOTMEM
 config MEMORY_ISOLATION
 	boolean
 
+# Build code to support changing the spans & size of pgdats & onlining more pgdats.
+config DYNAMIC_NODES
+	boolean
+
 config DYNAMIC_NUMA
 	bool "Dynamic Numa: Allow NUMA layout to change after boot time"
 	depends on NUMA
@@ -189,6 +193,7 @@ config DNUMA_DEBUGFS_WRITE
 config MEMORY_HOTPLUG
 	bool "Allow for memory hot-add"
 	select MEMORY_ISOLATION
+	select DYNAMIC_NODES
 	depends on SPARSEMEM || X86_64_ACPI_NUMA
 	depends on HOTPLUG && ARCH_ENABLE_MEMORY_HOTPLUG
 	depends on (IA64 || X86 || PPC_BOOK3S_64 || SUPERH || S390)
