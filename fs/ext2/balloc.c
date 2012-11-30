@@ -816,6 +816,7 @@ static int find_next_reservable_window(
 
 		prev = rsv;
 		next = rb_next(&rsv->rsv_node);
+		rsv = rb_entry(next,struct ext2_reserve_window_node,rsv_node);
 
 		/*
 		 * Reached the last reservation, we can just append to the
@@ -823,8 +824,6 @@ static int find_next_reservable_window(
 		 */
 		if (!next)
 			break;
-
-		rsv = rb_entry(next,struct ext2_reserve_window_node,rsv_node);
 
 		if (cur + size <= rsv->rsv_start) {
 			/*
