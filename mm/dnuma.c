@@ -44,72 +44,7 @@ DEFINE_SPINLOCK(dnuma_stats_lock);
  * - Need atomicity over the combination of commiting a new memlayout and removing the pages from free lists.
  */
 
-/* Do _not_ isolate the pfn range before calling this.
- * Based on __offline_isolated_pages()
- * - look @ move_freepages()
- * - also drain_all_pages. */
-
-/* XXX: handling a pfn range that spans multiple zones & nodes whould be useful
- *      pass more lists? Or an array of lists?
- */
-void remove_page_range_from_zone(unsigned long start_pfn, unsigned long end_pfn, struct list_head *head)
-{
-	struct page *page;
-	struct zone *zone;
-	int order, i;
-	unsigned long pfn;
-	unsigned long flags;
-	/* find the first valid pfn */
-	for (pfn = start_pfn; pfn < end_pfn; pfn++)
-		if (pfn_valid(pfn))
-			break;
-	if (pfn == end_pfn)
-		return;
-	zone = page_zone(pfn_to_page(pfn));
-	spin_lock_irqsave(&zone->lock, flags);
-	pfn = start_pfn;
-	while (pfn < end_pfn) {
-		if (!pfn_valid(pfn)) {
-			pfn++;
-			continue;
-		}
-		page = pfn_to_page(pfn);
-		//BUG_ON(page_count(page)); // ignore?
-		//BUG_ON(!PageBuddy(page)); // should we just skip non-buddy pages?
-		if (!PageBuddy(page)) {
-			pfn++;
-			continue;
-		}
-		//order = page_order(page); /* not exported from page_alloc.c */
-		order = page_private(page); /* page_order() is just
-					       page_private() with a
-					       BUG_ON(!PageBuddy(page)) */
-#ifdef CONFIG_DEBUG_VM
-		printk(KERN_INFO "remove from free list %lx %d %lx\n",
-		       pfn, 1 << order, end_pfn);
-#endif
-		list_del(&page->lru);
-
-		/* XXX: does __ClearPageBuddy() and set_page_private(page, 0)
-		 *      we probably want to not do the set_page_private(page, 0) bit.
-		 *      Or we could add each page to the list individulay */
-		//rmv_page_order(page); /* not exported from page_alloc.c */
-		__ClearPageBuddy(page);
-		/* XXX: also modify the total pages */
-		/* XXX: fiddle with per-node stats? */
-		zone->free_area[order].nr_free--;
-		__mod_zone_page_state(zone, NR_FREE_PAGES,
-				      - (1UL << order));
-		/* XXX: Do we need to do this? Do we loose any info we need to
-		 * restore the pages by doing this? */
-		for (i = 0; i < (1 << order); i++)
-			SetPageReserved((page+i));
-		pfn += (1 << order);
-	}
-	spin_unlock_irqrestore(&zone->lock, flags);
-}
-
-/* requires must be called under lock_memory_hotplug() */
+/* - must be called under lock_memory_hotplug() */
 void dnuma_online_required_nodes(struct memlayout *new_ml)
 {
 	int nid;
