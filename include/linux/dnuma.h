@@ -18,9 +18,6 @@ void dnuma_online_required_nodes(struct memlayout *new_ml);
 /* called with lock_memory_hotplug() & rcu_read_lock() both locked */
 void dnuma_move_to_new_ml(struct memlayout *new_ml);
 
-void dnuma_adjust_spanned_pages(unsigned long pfn, struct zone *new_zone,
-		struct pglist_data *new_node);
-
 static inline struct zone *get_zone(int nid, enum zone_type zonenum)
 {
 	return &NODE_DATA(nid)->node_zones[zonenum];
@@ -55,6 +52,19 @@ static inline void dnuma_update_move_page_stats(void)
 {}
 #endif
 
+static inline void dnuma_prior_add_to_new_zone(struct page *page, int order, struct zone *dest_zone, int dest_nid)
+{
+	int i;
+	unsigned long pfn;
+	for(i = 0; i < 1 << order; i++) {
+		set_page_node(page + i, dest_nid);
+	}
+
+	pfn = page_to_pfn(page);
+	grow_pgdat_and_zone(dest_zone, pfn, pfn + (1 << order));
+	dnuma_update_move_page_stats();
+}
+
 static inline struct zone *dnuma_pre_free_to_new_zone(struct page *page, int dest_nid)
 {
 	struct zone *dest_zone = get_zone(dest_nid, page_zonenum(page));
@@ -63,10 +73,7 @@ static inline struct zone *dnuma_pre_free_to_new_zone(struct page *page, int des
 	page_zone(page)->present_pages--;
 	unlock_memory_hotplug(); /* XXX: sleep while atomic. */
 
-	set_page_node(page, dest_nid);
-	dnuma_adjust_spanned_pages(page_to_pfn(page),
-			dest_zone, NODE_DATA(dest_nid));
-	dnuma_update_move_page_stats();
+	dnuma_prior_add_to_new_zone(page, 0, dest_zone, dest_nid);
 	return dest_zone;
 }
 
