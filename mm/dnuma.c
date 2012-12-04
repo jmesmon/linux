@@ -6,6 +6,8 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 
+#include "internal.h"
+
 #if CONFIG_DNUMA_DEBUGFS
 u64 dnuma_moved_page_ct;
 DEFINE_SPINLOCK(dnuma_stats_lock);
@@ -65,4 +67,100 @@ void dnuma_online_required_nodes(struct memlayout *new_ml)
 
 void dnuma_move_to_new_ml(struct memlayout *new_ml)
 {
+	/* XXX: locking considerations:
+	 *  - what can cause the hotplugging of a node? Do we just need to
+	 *    lock_memory_hotplug()?
+	 *  - pgdat_resize_lock()
+	 *    - "Nests above zone->lock and zone->size_seqlock."
+	 *  - zone_span_seq*() & zone_span_write*()
+	 */
+
+	struct rangemap_entry *rme;
+	ml_for_each_range(new_ml, rme) {
+		int range_nid = rme->nid;
+		unsigned long pfn;
+		LIST_HEAD(list);
+		struct page *page, *page_tmp;
+
+		for (pfn = rme->pfn_start; pfn <= rme->pfn_end; pfn++) {
+			struct zone *zone;
+			int page_nid, order;
+			unsigned long flags, last_pfn, first_pfn;
+			if (!pfn_valid(pfn))
+				continue;
+
+			page = pfn_to_page(pfn);
+
+			/* Currently allocated, will be fixed up when freed. */
+			if (!PageBuddy(page))
+				continue;
+
+			page_nid = page_to_nid(page);
+			/* Page is already in the "right" zone */
+			if (page_nid == range_nid)
+				continue;
+
+			zone = page_zone(page);
+			spin_lock_irqsave(&zone->lock, flags);
+
+			/* Someone allocated it since we last checked. It will
+			 * be fixed up when it is freed */
+			if (!PageBuddy(page))
+				goto skip_unlock;
+
+			/* It has already migrated "somewhere" */
+			if (page_zone(page) != zone)
+				goto skip_unlock;
+
+			/* FIXME: split pages when the range does not cover an
+			 * entire order */
+
+			/* gets page_order() assuming PageBuddy(page) */
+			order = page_private(page);
+			first_pfn = pfn & ~((1 << order) - 1);
+			last_pfn  = pfn |  ((1 << order) - 1);
+			if (WARN(pfn != first_pfn, "pfn %lu is not first_pfn %lu\n",
+							pfn, first_pfn)) {
+				pfn = last_pfn;
+				goto skip_unlock;
+			}
+
+			if (WARN(last_pfn > rme->pfn_end,
+					"last_pfn %lu goes beyond end of rme [ %lu - %lu ]\n",
+					last_pfn, rme->pfn_start, rme->pfn_end)) {
+				spin_unlock_irqrestore(&zone->lock, flags);
+				break; /* done with this rme */
+			}
+
+			/* locked by lock_memory_hotplug() */
+			zone->present_pages -= 1 << order;
+			zone->zone_pgdat->node_present_pages -= 1 << order;
+
+			/* XXX: can we shrink spanned_pages & start_pfn without too much work? */
+
+			/* zone free stats */
+			zone->free_area[order].nr_free--;
+			__mod_zone_page_state(zone, NR_FREE_PAGES,
+					      -(1UL << order));
+
+			list_move(&page->lru, &list);
+skip_unlock:
+			spin_unlock_irqrestore(&zone->lock, flags);
+		}
+
+		/* add grabbed pages to appropriate zone. */
+		list_for_each_entry_safe(page, page_tmp, &list, lru) {
+			struct zone *zone = get_zone(range_nid, page_zonenum(page));
+			int order = page_private(page); /* gets page_order() assuming PageBuddy(page) */
+			set_page_node(page, range_nid);
+
+			zone->present_pages += 1 << order;
+			zone->zone_pgdat->node_present_pages += 1 << order;
+
+			dnuma_prior_add_to_new_zone(page, order, zone, range_nid);
+
+			/* FIXME hits VM_BUG in "static inline void __SetPageBuddy(struct page *page)" */
+			return_pages_to_zone(page, order, zone);
+		}
+	}
 }
