@@ -10,6 +10,8 @@
 void grow_pgdat_and_zone(struct zone *zone, unsigned long start_pfn,
 			 unsigned long end_pfn);
 
+void adjust_zone_present_pages(struct zone *zone, long delta);
+
 /*
  * pgdat resizing functions
  */
