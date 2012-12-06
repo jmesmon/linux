@@ -132,9 +132,7 @@ void dnuma_move_to_new_ml(struct memlayout *new_ml)
 				break; /* done with this rme */
 			}
 
-			/* locked by lock_memory_hotplug() */
-			zone->present_pages -= 1 << order;
-			zone->zone_pgdat->node_present_pages -= 1 << order;
+			adjust_zone_present_pages(zone, -(1 << order));
 
 			/* XXX: can we shrink spanned_pages & start_pfn without too much work? */
 
@@ -154,8 +152,7 @@ skip_unlock:
 			int order = page_private(page); /* gets page_order() assuming PageBuddy(page) */
 			set_page_node(page, range_nid);
 
-			zone->present_pages += 1 << order;
-			zone->zone_pgdat->node_present_pages += 1 << order;
+			adjust_zone_present_pages(zone, 1 << order);
 
 			dnuma_prior_add_to_new_zone(page, order, zone, range_nid);
 
