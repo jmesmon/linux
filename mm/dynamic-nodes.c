@@ -39,3 +39,15 @@ void grow_pgdat_and_zone(struct zone *zone, unsigned long start_pfn,
 	grow_pgdat_span(zone->zone_pgdat, start_pfn, end_pfn);
 	pgdat_resize_unlock(zone->zone_pgdat, &flags);
 }
+
+void adjust_zone_present_pages(struct zone *zone, long delta)
+{
+	pgdat_resize_lock(zone->zone_pgdat, &flags);
+	zone_span_writelock(zone);
+
+	zone->present_pages += delta;
+	zone->zone_pgdat->node_present_pages += delta;
+
+	zone_span_writeunlock(zone);
+	pgdat_resize_unlock(zone->zone_pgdat, &flags);
+}
