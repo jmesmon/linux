@@ -42,6 +42,7 @@ void grow_pgdat_and_zone(struct zone *zone, unsigned long start_pfn,
 
 void adjust_zone_present_pages(struct zone *zone, long delta)
 {
+	unsigned long flags;
 	pgdat_resize_lock(zone->zone_pgdat, &flags);
 	zone_span_writelock(zone);
 
