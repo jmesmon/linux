@@ -543,9 +543,14 @@ static inline int zone_is_oom_locked(const struct zone *zone)
 	return test_bit(ZONE_OOM_LOCKED, &zone->flags);
 }
 
+static inline unsigned zone_end_pfn(const struct zone *zone)
+{
+	return zone->zone_start_pfn + zone->spanned_pages;
+}
+
 static inline bool zone_spans_pfn(const struct zone *zone, unsigned long pfn)
 {
-	return zone->zone_start_pfn <= pfn && pfn < zone->zone_start_pfn + zone->spanned_pages;
+	return zone->zone_start_pfn <= pfn && pfn < zone_end_pfn(zone);
 }
 
 /*
@@ -762,6 +767,11 @@ typedef struct pglist_data {
 	pg_data_t *__pgdat = NODE_DATA(nid);\
 	__pgdat->node_start_pfn + __pgdat->node_spanned_pages;\
 })
+
+static inline unsigned long pgdat_end_pfn(pg_data_t *pgdat)
+{
+	return pgdat->node_start_pfn + pgdat->node_spanned_pages;
+}
 
 #include <linux/memory_hotplug.h>
 
