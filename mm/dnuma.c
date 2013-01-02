@@ -60,19 +60,25 @@ void dnuma_online_required_nodes(struct memlayout *new_ml)
 	struct rangemap_entry *rme;
 	ml_for_each_range(new_ml, rme) {
 		nid = rme->nid;
-		if (!node_online(nid))
+		if (!node_online(nid)) {
+			pr_debug("onlining node %d\n", nid);
 			mem_online_node(nid);
+		}
 	}
 }
 
+/* Does memory allocation in ensure_zone_is_initialized(), must be called with
+ * is_atomic=false (ie: no spinlocks, no rcu).
+ */
 void dnuma_move_to_new_ml(struct memlayout *new_ml)
 {
 	/* XXX: locking considerations:
 	 *  - what can cause the hotplugging of a node? Do we just need to
 	 *    lock_memory_hotplug()?
-	 *  - pgdat_resize_lock()
-	 *    - "Nests above zone->lock and zone->size_seqlock."
-	 *  - zone_span_seq*() & zone_span_write*()
+	 */
+
+	/* migrate types?
+	 * ISOLATION?
 	 */
 
 	struct rangemap_entry *rme;
@@ -83,7 +89,7 @@ void dnuma_move_to_new_ml(struct memlayout *new_ml)
 		struct page *page, *page_tmp;
 
 		for (pfn = rme->pfn_start; pfn <= rme->pfn_end; pfn++) {
-			struct zone *zone;
+			struct zone *zone, *dest_zone;
 			int page_nid, order;
 			unsigned long flags, last_pfn, first_pfn;
 			if (!pfn_valid(pfn))
@@ -101,6 +107,7 @@ void dnuma_move_to_new_ml(struct memlayout *new_ml)
 				continue;
 
 			zone = page_zone(page);
+retry_page:
 			spin_lock_irqsave(&zone->lock, flags);
 
 			/* Someone allocated it since we last checked. It will
@@ -112,11 +119,20 @@ void dnuma_move_to_new_ml(struct memlayout *new_ml)
 			if (page_zone(page) != zone)
 				goto skip_unlock;
 
+			/* TODO: online required zones outside of atomic (they need memory allocations) */
+			dest_zone = get_zone(range_nid, page_zonenum(page));
+			if (!zone_is_initialized(dest_zone)) {
+				/* TODO: transplanting this page. */
+				spin_unlock_irqrestore(&zone->lock, flags);
+				/* XXX: locking on this? lock_memory_hotplug()? lock(dest_zone->lock)? */
+				ensure_zone_is_initialized(dest_zone);
+				goto retry_page;
+			}
+
 			/* FIXME: split pages when the range does not cover an
 			 * entire order */
 
-			/* gets page_order() assuming PageBuddy(page) */
-			order = page_private(page);
+			order = page_order(page);
 			first_pfn = pfn & ~((1 << order) - 1);
 			last_pfn  = pfn |  ((1 << order) - 1);
 			if (WARN(pfn != first_pfn, "pfn %lu is not first_pfn %lu\n",
@@ -150,14 +166,10 @@ skip_unlock:
 		list_for_each_entry_safe(page, page_tmp, &list, lru) {
 			struct zone *zone = get_zone(range_nid, page_zonenum(page));
 			int order = page_private(page); /* gets page_order() assuming PageBuddy(page) */
-			set_page_node(page, range_nid);
-
-			adjust_zone_present_pages(zone, 1 << order);
 
 			dnuma_prior_add_to_new_zone(page, order, zone, range_nid);
-
-			/* FIXME hits VM_BUG in "static inline void __SetPageBuddy(struct page *page)" */
 			return_pages_to_zone(page, order, zone);
+			adjust_zone_present_pages(zone, 1 << order);
 		}
 	}
 }
