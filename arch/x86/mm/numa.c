@@ -39,7 +39,7 @@ void __init arch_memlayout_init(void)
 	struct numa_meminfo *mi = &numa_meminfo;
 	int i;
 	struct numa_memblk *blk;
-	struct memlayout *ml = ml_create();
+	struct memlayout *ml = memlayout_create(ML_INITIAL);
 	if (WARN_ON(!ml))
 		return;
 
@@ -52,7 +52,7 @@ void __init arch_memlayout_init(void)
 	}
 	pr_devel("  done adding ranges from numa_meminfo\n");
 
-	memlayout_commit_initial(ml);
+	memlayout_commit(ml);
 }
 #endif
 
