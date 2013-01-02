@@ -34,33 +34,44 @@
  */
 
 /* protected by update_lock */
-static __rcu struct memlayout *pfn_to_node_map;
+__rcu struct memlayout *pfn_to_node_map;
 
-#ifdef CONFIG_DNUMA_DEBUGFS
 static DEFINE_MUTEX(update_lock);
 # define ml_update_lock()   mutex_lock(&update_lock)
 # define ml_update_unlock() mutex_unlock(&update_lock)
 # define ml_update_is_locked() mutex_is_locked(&update_lock)
-#else /* !defined(CONFIG_DNUMA_DEBUGFS) */
-static DEFINE_SPINLOCK(update_lock);
-# define ml_update_lock()   spin_lock(&update_lock)
-# define ml_update_unlock() spin_unlock(&update_lock)
-# define ml_update_is_locked() spin_is_locked(&update_lock)
-#endif
+
+#define kfree_complete_rbtree(root, type, field)	\
+		rbtree_postorder_apply_safe(root, type, field, kfree)
+
+#define rbtree_postorder_for_each_entry_safe(pos, n, root, field)		\
+	for (pos = rb_entry(rb_first_postorder(root), typeof(pos), field),	\
+	      n = rb_entry(rb_next_postorder(&pos->field), typeof(pos), field);	\
+	     &pos->field;							\
+	     pos = n,								\
+	      n = rb_entry(rb_next_postorder(&pos->field), typeof(pos), field))
+
+#define rbtree_postorder_apply_safe(root, type, field, applyable) do {		\
+		struct rb_node *__kcr_node, *__kcr_next;			\
+		for (__kcr_node = rb_first_postorder(root),			\
+				__kcr_next = rb_next_postorder(__kcr_node);	\
+		     __kcr_node;						\
+		     __kcr_node = __kcr_next,					\
+				__kcr_next = rb_next_postorder(__kcr_node)) {		\
+			type *__kcr_entry = rb_entry(__kcr_node, type, field);	\
+			applyable(__kcr_entry);					\
+		}								\
+	} while(0)
 
 static void free_rme_tree(struct rb_root *root)
 {
-	struct rb_node *node, *next;
-	for (node = rb_first_postorder(root), next = rb_next_postorder(node);
-	     node;
-	     node = next, next = rb_next_postorder(node)) {
-		struct rangemap_entry *rme = rb_entry(node, typeof(*rme), node);
-		kfree(rme);
-	}
+	kfree_complete_rbtree(root, struct rangemap_entry, node);
 }
 
 static void ml_destroy_mem(struct memlayout *ml)
 {
+	if (!ml)
+		return;
 	free_rme_tree(&ml->root);
 	kfree(ml);
 }
@@ -74,7 +85,7 @@ static inline void ml_backlog_feed(__unused struct memlayout *ml)
 	if (kfifo_is_full(&ml_backlog)) {
 		struct memlayout *old_ml;
 		kfifo_get(&ml_backlog, &old_ml);
-		ml_destroy(ml);
+		memlayout_destroy(ml);
 	}
 
 	kfifo_put(&ml_backlog, &ml);
@@ -90,7 +101,7 @@ static inline void ml_backlog_feed(struct memlayout *ml)
 /* No backlog */
 static inline void ml_backlog_feed(struct memlayout *ml)
 {
-	ml_destroy(ml);
+	memlayout_destroy(ml);
 }
 #else
 # error "Invalid CONFIG_DNUMA_BACKLOG value"
@@ -178,31 +189,48 @@ static u64 dnuma_user_end;
 static u32 dnuma_user_node; /* XXX: I don't care about this var, remove? */
 static u8  dnuma_user_commit; /* XXX: don't care about this one either */
 static struct memlayout *user_ml;
+static DEFINE_MUTEX(dnuma_user_lock);
 static int dnuma_user_node_watch(u32 old_val, u32 new_val)
 {
-	int ret;
-	/* XXX: check if 'new_val' is an allocated node. */
+	int ret = 0;
+	mutex_lock(&dnuma_user_lock);
 	if (!user_ml)
-		user_ml = ml_create();
+		user_ml = memlayout_create(ML_DNUMA);
 
-	if (WARN_ON(!user_ml))
-		return -ENOMEM;
+	if (WARN_ON(!user_ml)) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	if (new_val >= MAX_NUMNODES) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	if (dnuma_user_start == dnuma_user_end) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	ret = memlayout_new_range(user_ml, dnuma_user_start, dnuma_user_end,
 				  new_val);
-	if (ret)
-		return ret;
 
-	dnuma_user_start = 0;
-	dnuma_user_end = 0;
-	return 0;
+	if (!ret) {
+		dnuma_user_start = 0;
+		dnuma_user_end = 0;
+	}
+out:
+	mutex_unlock(&dnuma_user_lock);
+	return ret;
 }
 
 static int dnuma_user_commit_watch(u8 old_val, u8 new_val)
 {
+	mutex_lock(&dnuma_user_lock);
 	if (user_ml)
 		memlayout_commit(user_ml);
 	user_ml = NULL;
+	mutex_unlock(&dnuma_user_lock);
 	return 0;
 }
 
@@ -256,6 +284,19 @@ e_out:
 	kfree(new_ml);
 }
 
+atomic64_t ml_cache_hits;
+atomic64_t ml_cache_misses;
+
+static inline void ml_stat_cache_miss(void)
+{
+	atomic64_inc(&ml_cache_misses);
+}
+
+static inline void ml_stat_cache_hit(void)
+{
+	atomic64_inc(&ml_cache_hits);
+}
+
 /* returns 0 if root_dentry has been created */
 static int ml_dbgfs_create_root(void)
 {
@@ -275,8 +316,13 @@ static int ml_dbgfs_create_root(void)
 
 	/* TODO: place in a different dir? (to keep memlayout & dnuma seperate)
 	 */
+	/* XXX: Horrible atomic64 hack is horrible. */
 	debugfs_create_u64("moved-pages", 0400, root_dentry,
 			   &dnuma_moved_page_ct);
+	debugfs_create_u64("pfn-lookup-cache-misses", 0400, root_dentry,
+			   &ml_cache_misses.counter);
+	debugfs_create_u64("pfn-lookup-cache-hits", 0400, root_dentry,
+			   &ml_cache_hits.counter);
 
 #if defined(CONFIG_DNUMA_DEBUGFS_WRITE)
 	/* Set node last: on write, it adds the range. */
@@ -330,7 +376,7 @@ static void ml_dbgfs_set_current(struct memlayout *ml)
 
 static void ml_destroy_dbgfs(struct memlayout *ml)
 {
-	if (ml->d)
+	if (ml && ml->d)
 		debugfs_remove_recursive(ml->d);
 }
 
@@ -340,10 +386,15 @@ static void __exit ml_dbgfs_exit(void)
 	root_dentry = NULL;
 }
 
+
 module_init(ml_dbgfs_init_root);
 module_exit(ml_dbgfs_exit);
 #else
 #warning "dbgfs disabled fallback functions are not yet defined."
+static inline void ml_stat_cache_hit(void)
+{}
+static inline void ml_stat_cache_miss(void)
+{}
 static inline void ml_destroy_dbgfs(__unused struct memlayout *ml)
 {}
 #endif
@@ -383,6 +434,12 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
 {
 	struct rb_node **new, *parent;
 	struct rangemap_entry *rme;
+
+	if (WARN_ON(nid < 0))
+		return -EINVAL;
+	if (WARN_ON(nid > MAX_NUMNODES))
+		return -EINVAL;
+
 	if (find_insertion_point(ml, pfn_start, pfn_end, nid, &new, &parent))
 		return 1;
 
@@ -401,25 +458,49 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
 	return 0;
 }
 
+static inline bool rme_bounds_pfn(struct rangemap_entry *rme, unsigned long pfn)
+{
+	return rme->pfn_start <= pfn && pfn <= rme->pfn_end;
+}
+
 int memlayout_pfn_to_nid_no_pageflags(unsigned long pfn)
 {
 	struct rb_node *node;
 	struct memlayout *ml;
+	struct rangemap_entry *rme;
 	rcu_read_lock();
 	ml = rcu_dereference(pfn_to_node_map);
-	if (!ml)
+	if (!ml || (ml->type == ML_INITIAL))
 		goto out;
+
+	/* FIXME: hack that assumes reading & writing a pointer is atomic */
+	rme = ACCESS_ONCE(ml->cache);
+	if (rme && rme_bounds_pfn(rme, pfn)) {
+		rcu_read_unlock();
+		ml_stat_cache_hit();
+		return rme->nid;
+	}
+
+	ml_stat_cache_miss();
+
 	node = ml->root.rb_node;
 	while (node) {
 		struct rangemap_entry *rme = rb_entry(node, typeof(*rme), node);
-		bool gts = rme->pfn_start <= pfn;
-		bool lte = pfn <= rme->pfn_end;
+		bool greater_than_start = rme->pfn_start <= pfn;
+		bool less_than_end = pfn <= rme->pfn_end;
 
-		if (gts && !lte)
+		if (greater_than_start && !less_than_end)
 			node = node->rb_right;
-		else if (!lte && gts)
+		else if (!less_than_end && greater_than_start)
 			node = node->rb_left;
-		else { /* gts && lte, the case (!gts && !lte) is impossible */
+		else {
+			/* greater_than_start && less_than_end.
+			 *  the case (!greater_than_start  && !less_than_end)
+			 *  is impossible */
+			/* FIXME: here the ACCESS_ONCE is mainly for anotation,
+			 * there aren't repeated uses that would cause issues.
+			 * */
+			ACCESS_ONCE(ml->cache) = rme;
 			rcu_read_unlock();
 			return rme->nid;
 		}
@@ -430,37 +511,27 @@ out:
 	return NUMA_NO_NODE;
 }
 
-void memlayout_commit_initial(struct memlayout *ml)
-{
-	struct memlayout *old_ml;
-	ml_update_lock();
-	old_ml = rcu_dereference_protected(pfn_to_node_map,
-					   ml_update_is_locked());
-	if (WARN(old_ml, "memlayout_commit_initial is not first\n")) {
-		ml_update_unlock();
-		/* this layout was never committed, so we don't add it to the
-		 * backlog */
-		ml_destroy(ml);
-	} else {
-		rcu_assign_pointer(pfn_to_node_map, ml);
-		ml_update_unlock();
-		synchronize_rcu();
-	}
-}
-
-void ml_destroy(struct memlayout *ml)
+void memlayout_destroy(struct memlayout *ml)
 {
 	ml_destroy_dbgfs(ml);
 	ml_destroy_mem(ml);
 }
 
-struct memlayout *ml_create(void)
+struct memlayout *memlayout_create(enum memlayout_type type)
 {
-	struct memlayout *ml = kmalloc(sizeof(*ml), GFP_KERNEL);
+	struct memlayout *ml;
+
+	if (WARN_ON(type < 0 || type >= ML_NUM_TYPES))
+		return NULL;
+
+	ml = kmalloc(sizeof(*ml), GFP_KERNEL);
 	if (!ml)
 		return NULL;
 
-	ml->root.rb_node = NULL;
+	ml->root = RB_ROOT;
+	ml->type = type;
+	ml->cache = NULL;
+
 	ml_dbgfs_init(ml);
 	return ml;
 }
@@ -469,40 +540,64 @@ void memlayout_commit(struct memlayout *ml)
 {
 	struct memlayout *old_ml;
 
-	/* If more than one memory layout comes along, at worst we'll online
-	 * more nodes than needed */
+	if (ml->type == ML_INITIAL) {
+		if (WARN(dnuma_is_active(), "memlayout marked first is not first, ignoring.\n")) {
+			ml_backlog_feed(ml);
+			return;
+		}
+		if (WARN(dnuma_has_memlayout(),
+				"memlayout marked as first would override another first, ignoring.\n")) {
+			ml_backlog_feed(ml);
+			return;
+		}
+
+		ml_update_lock();
+		ml_dbgfs_set_current(ml);
+		rcu_assign_pointer(pfn_to_node_map, ml);
+		ml_update_unlock();
+		return;
+	}
+
+	/* locks & unlocks *_memory_hotplug() */
 	dnuma_online_required_nodes(ml);
 
 	ml_update_lock();
+
 	ml_dbgfs_set_current(ml);
+
 	old_ml = rcu_dereference_protected(pfn_to_node_map,
 			ml_update_is_locked());
+
+	dnuma_move_to_new_ml(ml);
+
+	/* FIXME: in this interviening time between dnuma_move_to_new_ml() and
+	 * assiging a new pfn_to_node_map, pages would be freed to the old ml
+	 * */
+
+	/* must occur after dnuma_move_to_new_ml() as dnuma_move_to_new_ml()
+	 * sets up uninitialized zones which would otherwise be used
+	 * uninitialized in the free path */
 	rcu_assign_pointer(pfn_to_node_map, ml);
+
+	/* Must be done after the free_lists are emptied of pages which need
+	 * transplanting, otherwise pages could be reallocated from the wrong
+	 * nodes. */
+	drain_all_pages();
+
 	ml_update_unlock();
 
 	synchronize_rcu();
-
 	ml_backlog_feed(old_ml);
-
-	/* XXX: creep */
-	drain_all_pages();
-
-	/* XXX: disaster in atomicity */
-	lock_memory_hotplug();
-	rcu_read_lock();
-	ml = rcu_dereference(pfn_to_node_map);
-	dnuma_move_to_new_ml(ml);
-	rcu_read_unlock();
-	unlock_memory_hotplug();
 }
 
 int __init_memblock memlayout_init_from_memblock(void)
 {
 	int i, nid, errs = 0;
 	unsigned long start, end;
-	struct memlayout *ml = ml_create();
+	struct memlayout *ml = memlayout_create(ML_INITIAL);
 	if (WARN_ON(!ml))
 		return -ENOMEM;
+
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, &nid) {
 		int r = memlayout_new_range(ml, start, end - 1, nid);
 		if (r) {
@@ -514,6 +609,6 @@ int __init_memblock memlayout_init_from_memblock(void)
 					start, end, nid);
 	}
 
-	memlayout_commit_initial(ml);
+	memlayout_commit(ml);
 	return errs;
 }
