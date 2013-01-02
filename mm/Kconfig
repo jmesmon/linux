@@ -166,6 +166,9 @@ config MOVABLE_NODE
 config DYNAMIC_NODES
 	boolean
 
+config HAVE_ARCH_MEMLAYOUT_INIT
+	boolean
+
 config DYNAMIC_NUMA
 	bool "Dynamic Numa: Allow NUMA layout to change after boot time"
 	depends on NUMA
