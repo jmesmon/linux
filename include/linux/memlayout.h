@@ -12,14 +12,18 @@
 #  error "CONFIG_DYNAMIC_NUMA requires the NODE is in page flags. Try freeing up some flags by decreasing the maximum number of NUMA nodes, or switch to sparsmem-vmemmap"
 # endif
 
-/* XXX: add nodemask for use in dnuma_online_required_nodes & build in
- * memlayout_new_range()? */
-struct memlayout {
-	struct rb_root root;
-#ifdef CONFIG_DNUMA_DEBUGFS
-	unsigned seq;
-	struct dentry *d;
+#if 0
+/* must keep 'range_ct' from memlayout */
+struct pfn_iterator {
+	atomic_t ref_ct;
+	struct flex_array *ranges;
+};
 #endif
+
+enum memlayout_type {
+	ML_INITIAL,
+	ML_DNUMA,
+	ML_NUM_TYPES
 };
 
 /*
@@ -29,11 +33,31 @@ struct memlayout {
 struct rangemap_entry {
 	struct rb_node node;
 	unsigned long pfn_start;
-	/* @pfn_end: inclusive, stored this way (instead of a count) to make
-	 *           the lookup faster */
+	/* @pfn_end: inclusive, not stored as a count to make the lookup
+	 *           faster
+	 */
 	unsigned long pfn_end;
 	int nid;
 };
+
+/* XXX: add nodemask for use in dnuma_online_required_nodes & build in
+ * memlayout_new_range()? */
+struct memlayout {
+	struct rb_root root;
+	enum memlayout_type type;
+	struct rangemap_entry *cache;
+#if 0
+	unsigned long range_ct;
+	struct pfn_iterator *pfn_iterator;
+#endif
+#ifdef CONFIG_DNUMA_DEBUGFS
+	unsigned seq;
+	struct dentry *d;
+#endif
+};
+
+extern __rcu struct memlayout *pfn_to_node_map;
+
 
 /* FIXME: overflow potential in completion check */
 #define ml_for_each_pfn_in_range(rme, pfn)	\
@@ -46,8 +70,8 @@ struct rangemap_entry {
 	     &rme->node;						\
 	     rme = rb_entry(rb_next(&rme->node), typeof(*rme), node))
 
-struct memlayout *ml_create(void);
-void ml_destroy(struct memlayout *ml);
+struct memlayout *memlayout_create(enum memlayout_type);
+void              memlayout_destroy(struct memlayout *ml);
 
 /* Callers accesing the same memlayout are assumed to be serialized */
 int memlayout_new_range(struct memlayout *ml,
@@ -81,6 +105,12 @@ int memlayout_init_from_memblock(void) __init_memblock;
 /* defined in an arch code. Called in init/main.c following kmem_cache
  * initialization. */
 void arch_memlayout_init(void);
+
+#ifdef CONFIG_HAVE_ARCH_MEMLAYOUT_INIT
+#define memlayout_global_init() arch_memlayout_init()
+#else
+#define memlayout_global_init() memlayout_init_from_memblock()
+#endif
 
 #else /* ! defined(CONFIG_DYNAMIC_NUMA) */
 
