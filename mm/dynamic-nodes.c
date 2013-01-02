@@ -66,3 +66,12 @@ void adjust_zone_present_pages(struct zone *zone, long delta)
 	zone_span_writeunlock(zone);
 	pgdat_resize_unlock(zone->zone_pgdat, &flags);
 }
+
+/* Can fail with -ENOMEM from allocating a wait table with vmalloc() or
+ * alloc_bootmem_node_nopanic() */
+int __ref ensure_zone_is_initialized(struct zone *zone)
+{
+	if (!zone_is_initialized(zone))
+		return init_currently_empty_zone(zone, 0, 0, MEMMAP_HOTPLUG);
+	return 0;
+}

@@ -108,6 +108,13 @@ extern bool is_free_buddy_page(struct page *page);
 void return_pages_to_zone(struct page *page, unsigned int order, struct zone *zone);
 #endif
 
+/*
+ * in mm/dynamic-nodes.c
+ */
+#ifdef CONFIG_DYNAMIC_NODES
+int ensure_zone_is_initialized(struct zone *zone);
+#endif
+
 #if defined CONFIG_COMPACTION || defined CONFIG_CMA
 /*
  * in mm/compaction.c
