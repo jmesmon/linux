@@ -184,6 +184,9 @@ config DYNAMIC_NUMA
 	 system, this config option enables Linux to update it's knowledge of
 	 the memory layout.
 
+	 If the feature is not used but is enabled, there is a small amount of overhead (an
+	 additional pointer NULL check) added to all page frees.
+
 	 Choose Y if you have one of these systems (XXX: which ones?), otherwise choose N.
 
 config DNUMA_DEBUGFS
