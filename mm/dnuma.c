@@ -67,6 +67,24 @@ void dnuma_online_required_nodes(struct memlayout *new_ml)
 	}
 }
 
+/* Always called after dnuma_move_to_new_ml() & the assigning of the new
+ * memlayout */
+/* FIXME: folding this into dnuma_move_to_new_ml() could allow us to avoid
+ * re-processing the free pages which are currently transplanted within
+ * dnuma_move_to_new_ml(). */
+void dnuma_mark_page_range(struct memlayout *new_ml)
+{
+	struct rangemap_entry *rme;
+	ml_for_each_range(new_ml, rme) {
+		unsigned long pfn;
+		for (pfn = rme->pfn_start; pfn <= rme->pfn_end; pfn++) {
+			struct page *page = pfn_to_page(pfn);
+			/* FIXME: should we be skipping compound / buddied pages? */
+			SetPageLookupNode(page);
+		}
+	}
+}
+
 /* Does memory allocation in ensure_zone_is_initialized(), must be called with
  * is_atomic=false (ie: no spinlocks, no rcu).
  */
@@ -80,13 +98,11 @@ void dnuma_move_to_new_ml(struct memlayout *new_ml)
 	/* migrate types?
 	 * ISOLATION?
 	 */
-
 	struct rangemap_entry *rme;
 	ml_for_each_range(new_ml, rme) {
 		int range_nid = rme->nid;
 		unsigned long pfn;
-		LIST_HEAD(list);
-		struct page *page, *page_tmp;
+		struct page *page;
 
 		for (pfn = rme->pfn_start; pfn <= rme->pfn_end; pfn++) {
 			struct zone *zone, *dest_zone;
@@ -157,19 +173,18 @@ retry_page:
 			__mod_zone_page_state(zone, NR_FREE_PAGES,
 					      -(1UL << order));
 
-			list_move(&page->lru, &list);
+			list_del(&page->lru);
+
+			spin_unlock_irqrestore(&zone->lock, flags);
+
+			/* Add page to new zone */
+			dnuma_prior_add_to_new_zone(page, order, dest_zone, range_nid);
+			return_pages_to_zone(page, order, dest_zone);
+			adjust_zone_present_pages(dest_zone, 1 << order);
+
+			continue;
 skip_unlock:
 			spin_unlock_irqrestore(&zone->lock, flags);
-		}
-
-		/* add grabbed pages to appropriate zone. */
-		list_for_each_entry_safe(page, page_tmp, &list, lru) {
-			struct zone *zone = get_zone(range_nid, page_zonenum(page));
-			int order = page_private(page); /* gets page_order() assuming PageBuddy(page) */
-
-			dnuma_prior_add_to_new_zone(page, order, zone, range_nid);
-			return_pages_to_zone(page, order, zone);
-			adjust_zone_present_pages(zone, 1 << order);
 		}
 	}
 }

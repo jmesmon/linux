@@ -579,6 +579,8 @@ void memlayout_commit(struct memlayout *ml)
 	 * uninitialized in the free path */
 	rcu_assign_pointer(pfn_to_node_map, ml);
 
+	dnuma_mark_page_range(ml);
+
 	/* Must be done after the free_lists are emptied of pages which need
 	 * transplanting, otherwise pages could be reallocated from the wrong
 	 * nodes. */
