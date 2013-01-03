@@ -175,7 +175,6 @@ config DYNAMIC_NUMA
 	depends on !DISCONTIGMEM
 	depends on MEMORY_HOTPLUG # locking + mem_online_node(). Split these out.
 	select DYNAMIC_NODES
-	select HOLES_IN_ZONE      # true during the transition period.
 	help
 	 Dynamic Numa (DNUMA) allows the movement of pages between NUMA nodes at
 	 run time.
