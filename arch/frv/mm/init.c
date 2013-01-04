@@ -168,18 +168,13 @@ void __init mem_init(void)
 void free_initmem(void)
 {
 #if defined(CONFIG_RAMKERNEL) && !defined(CONFIG_PROTECT_KERNEL)
-	unsigned long start, end, addr;
+	unsigned long start, end;
 
 	start = PAGE_ALIGN((unsigned long) &__init_begin);	/* round up */
 	end   = ((unsigned long) &__init_end) & PAGE_MASK;	/* round down */
 
 	/* next to check that the page we free is not a partial page */
-	for (addr = start; addr < end; addr += PAGE_SIZE) {
-		ClearPageReserved(virt_to_page(addr));
-		init_page_count(virt_to_page(addr));
-		free_page(addr);
-		totalram_pages++;
-	}
+	free_init_page_range(start, end);
 
 	printk("Freeing unused kernel memory: %ldKiB freed (0x%lx - 0x%lx)\n",
 	       (end - start) >> 10, start, end);
@@ -193,14 +188,7 @@ void free_initmem(void)
 #ifdef CONFIG_BLK_DEV_INITRD
 void __init free_initrd_mem(unsigned long start, unsigned long end)
 {
-	int pages = 0;
-	for (; start < end; start += PAGE_SIZE) {
-		ClearPageReserved(virt_to_page(start));
-		init_page_count(virt_to_page(start));
-		free_page(start);
-		totalram_pages++;
-		pages++;
-	}
-	printk("Freeing initrd memory: %dKiB freed\n", (pages * PAGE_SIZE) >> 10);
+	free_init_page_range(start, end);
+	printk("Freeing initrd memory: %dKiB freed\n", (end - start) >> 10);
 } /* end free_initrd_mem() */
 #endif
