@@ -255,26 +255,15 @@ void free_initrd_mem(unsigned long start, unsigned long end)
 	printk(KERN_INFO "Freeing initrd memory: %ldk freed\n",
 	       (end - start) >> 10);
 
-	for (; start < end; start += PAGE_SIZE) {
-		ClearPageReserved(virt_to_page(start));
-		init_page_count(virt_to_page(start));
-		free_page(start);
-		totalram_pages++;
-	}
+	free_init_page_range(start, end);
 }
 #endif
 
 void free_initmem(void)
 {
-	unsigned long addr;
+	free_init_page_range((unsigned long)&__init_begin,
+			     (unsigned long)&__init_end);
 
-	addr = (unsigned long)(&__init_begin);
-	for (; addr < (unsigned long)(&__init_end); addr += PAGE_SIZE) {
-		ClearPageReserved(virt_to_page(addr));
-		init_page_count(virt_to_page(addr));
-		free_page(addr);
-		totalram_pages++;
-	}
 	printk(KERN_INFO "Freeing unused kernel memory: %luk freed\n",
 	       ((unsigned long)&__init_end -
 		(unsigned long)&__init_begin) >> 10);
