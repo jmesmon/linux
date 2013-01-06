@@ -257,12 +257,7 @@ void free_initrd_mem(unsigned long start, unsigned long end)
 	if (start < end)
 		printk(KERN_INFO "Freeing initrd memory: %ldk freed\n",
 		       (end - start) >> 10);
-	for (; start < end; start += PAGE_SIZE) {
-		ClearPageReserved(virt_to_page(start));
-		init_page_count(virt_to_page(start));
-		free_page(start);
-		totalram_pages++;
-	}
+	free_init_page_range(start, end);
 }
 #endif
 
