@@ -158,13 +158,7 @@ free_initmem (void)
 
 	addr = (unsigned long) ia64_imva(__init_begin);
 	eaddr = (unsigned long) ia64_imva(__init_end);
-	while (addr < eaddr) {
-		ClearPageReserved(virt_to_page(addr));
-		init_page_count(virt_to_page(addr));
-		free_page(addr);
-		++totalram_pages;
-		addr += PAGE_SIZE;
-	}
+	free_init_page_range(addr, eaddr);
 	printk(KERN_INFO "Freeing unused kernel memory: %ldkB freed\n",
 	       (__init_end - __init_begin) >> 10);
 }
