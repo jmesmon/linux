@@ -81,10 +81,12 @@ set_bit(unsigned int nr, volatile unsigned long *addr)
  * If it's called on the same region of memory simultaneously, the effect
  * may be that only one operation succeeds.
  */
+#if 0
 static inline void __set_bit(int nr, volatile unsigned long *addr)
 {
 	asm volatile("bts %1,%0" : ADDR : "Ir" (nr) : "memory");
 }
+#endif
 
 /**
  * clear_bit - Clears a bit in memory
@@ -124,9 +126,32 @@ static inline void clear_bit_unlock(unsigned nr, volatile unsigned long *addr)
 	clear_bit(nr, addr);
 }
 
+#if 0
 static inline void __clear_bit(int nr, volatile unsigned long *addr)
 {
 	asm volatile("btr %1,%0" : ADDR : "Ir" (nr));
+}
+#endif
+
+#include <asm/delay.h>
+static inline void __set_bit(int nr, volatile unsigned long *addr)
+{
+	unsigned long mask = BIT_MASK(nr);
+	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
+	unsigned long v = *p;
+
+	udelay(100);
+	*p  = v | mask;
+}
+
+static inline void __clear_bit(int nr, volatile unsigned long *addr)
+{
+	unsigned long mask = BIT_MASK(nr);
+	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
+	unsigned long v = *p;
+
+	udelay(100);
+	*p = v & ~mask;
 }
 
 /*

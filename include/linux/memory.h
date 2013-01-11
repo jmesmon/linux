@@ -82,10 +82,14 @@ struct mem_section;
 #define IPC_CALLBACK_PRI        10
 
 #ifndef CONFIG_MEMORY_HOTPLUG_SPARSE
+#ifndef CONFIG_FLATMEM
 static inline int memory_dev_init(void)
 {
 	return 0;
 }
+#else
+extern int memory_dev_init(void);
+#endif
 static inline int register_memory_notifier(struct notifier_block *nb)
 {
 	return 0;

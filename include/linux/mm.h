@@ -610,13 +610,30 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
 #ifdef CONFIG_SPARSEMEM_VMEMMAP
 #error "Vmemmap: No space for nodes field in page flags"
 #endif
-#define NODES_WIDTH		0
+#define NODES_WIDTH 0
+#endif
+
+#ifdef CONFIG_DEBUG_NONATOMIC_PF
+# if CONFIG_DEBUG_NONATOMIC_PF == -1
+#  define PGCT_WIDTH (BITS_PER_LONG - (SECTIONS_WIDTH+ZONES_WIDTH+NODES_SHIFT+NR_PAGEFLAGS))
+# else
+#  define PGCT_WIDTH CONFIG_DEBUG_NONATOMIC_PF
+# endif
+
+# if (SECTIONS_WIDTH+ZONES_WIDTH+NODES_SHIFT+PGCT_WIDTH <= BITS_PER_LONG - NR_PAGEFLAGS) || (PGCT_WIDTH < 0)
+#  error "Can't debug non-atomic pageflags: no space in pageflags"
+# endif
+# define PGCT_SHIFT PGCT_WIDTH
+#else /* !defined CONFIG_DEBUG_NONATOMIC_PF */
+# define PGCT_SHIFT 0
+# define PGCT_WIDTH 0
 #endif
 
 /* Page flags: | [SECTION] | [NODE] | ZONE | ... | FLAGS | */
 #define SECTIONS_PGOFF		((sizeof(unsigned long)*8) - SECTIONS_WIDTH)
 #define NODES_PGOFF		(SECTIONS_PGOFF - NODES_WIDTH)
 #define ZONES_PGOFF		(NODES_PGOFF - ZONES_WIDTH)
+#define PGCT_PGOFF		(ZONES_PGOFF - PGCT_WIDTH)
 
 /*
  * We are going to use the flags for the page to node mapping if its in
@@ -634,6 +651,7 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
 #define SECTIONS_PGSHIFT	(SECTIONS_PGOFF * (SECTIONS_WIDTH != 0))
 #define NODES_PGSHIFT		(NODES_PGOFF * (NODES_WIDTH != 0))
 #define ZONES_PGSHIFT		(ZONES_PGOFF * (ZONES_WIDTH != 0))
+#define PGCT_PGSHIFT		(PGCT_PGOFF  * (PGCT_WIDTH != 0))
 
 /* NODE:ZONE or SECTION:ZONE is used to ID a zone for the buddy allocator */
 #ifdef NODE_NOT_IN_PAGE_FLAGS
@@ -656,6 +674,18 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
 #define NODES_MASK		((1UL << NODES_WIDTH) - 1)
 #define SECTIONS_MASK		((1UL << SECTIONS_WIDTH) - 1)
 #define ZONEID_MASK		((1UL << ZONEID_SHIFT) - 1)
+#define PGCT_MASK		((1UL << PGCT_SHIFT) - 1)
+
+static inline void set_pg_count(struct page *page, int value)
+{
+	page->flags &= ~(PGCT_MASK << PGCT_PGSHIFT);
+	page->flags |=  (value & PGCT_MASK) << PGCT_PGSHIFT;
+}
+
+static inline unsigned long get_pg_count(struct page *page, int value)
+{
+	return (page->flags & (PGCT_MASK << PGCT_PGSHIFT)) >> PGCT_PGSHIFT;
+}
 
 static inline enum zone_type page_zonenum(const struct page *page)
 {
