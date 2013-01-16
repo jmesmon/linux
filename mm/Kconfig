@@ -184,6 +184,31 @@ config DYNAMIC_NUMA
 
 	 Choose Y if you have one of these systems (XXX: which ones?), otherwise choose N.
 
+config DNUMA_DEBUGFS
+	bool "Export DNUMA & memlayout internals via debugfs"
+	depends on DYNAMIC_NUMA
+	help
+	 Provides
+
+config DNUMA_BACKLOG
+	int "Number of old memlayouts to keep (0 = None, -1 = unlimited)"
+	depends on DNUMA_DEBUGFS
+	help
+	 Allows access to old memory layouts & statistics in debugfs.
+
+	 Each memlayout will consume some memory, and when set to -1
+	 (unlimited), this can result in unbounded kernel memory use.
+
+config DNUMA_DEBUGFS_WRITE
+	bool "Change NUMA layout via debugfs"
+	depends on DNUMA_DEBUGFS
+	help
+	 Enable the use of <debugfs>/memlayout/{start,end,node,commit}
+
+	 Write a PFN to 'start' & 'end', then a node id to 'node'.
+	 Repeat this until you are satisfied with your memory layout, then
+	 write '1' to 'commit'.
+
 # eventually, we can have this option just 'select SPARSEMEM'
 config MEMORY_HOTPLUG
 	bool "Allow for memory hot-add"
