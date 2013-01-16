@@ -104,6 +104,10 @@ extern void prep_compound_page(struct page *page, unsigned long order);
 #ifdef CONFIG_MEMORY_FAILURE
 extern bool is_free_buddy_page(struct page *page);
 #endif
+#ifdef CONFIG_DYNAMIC_NUMA
+void return_pages_to_zone(struct page *page, unsigned int order,
+			  struct zone *zone);
+#endif
 
 #ifdef CONFIG_MEMORY_HOTPLUG
 /*
@@ -114,7 +118,6 @@ extern int ensure_zone_is_initialized(struct zone *zone,
 #endif
 
 #if defined CONFIG_COMPACTION || defined CONFIG_CMA
-
 /*
  * in mm/compaction.c
  */
