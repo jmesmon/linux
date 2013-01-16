@@ -8,6 +8,8 @@
 #include <linux/atomic.h>
 
 #ifdef CONFIG_DYNAMIC_NUMA
+extern atomic64_t dnuma_moved_page_ct;
+
 /* called by memlayout_commit() _before_ a new memory layout takes effect. */
 void dnuma_online_required_nodes(struct memlayout *new_ml);
 
@@ -64,6 +66,16 @@ static inline int dnuma_page_needs_move(struct page *page)
 
 	return new_nid;
 }
+
+#if CONFIG_DNUMA_DEBUGFS
+static inline void dnuma_update_move_page_stats(void)
+{
+	atomic64_add_unless(&dnuma_moved_page_ct, 1, ~(u64)0);
+}
+#else
+static inline void dnuma_update_move_page_stats(void)
+{}
+#endif
 
 void adjust_zone_present_pages(struct zone *zone, long delta);
 
