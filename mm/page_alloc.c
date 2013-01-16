@@ -442,6 +442,12 @@ static inline void set_page_order(struct page *page, int order)
 	__SetPageBuddy(page);
 }
 
+static inline void set_free_page_order(struct page *page, int order)
+{
+	set_page_private(page, order);
+	VM_BUG_ON(!PageBuddy(page));
+}
+
 static inline void rmv_page_order(struct page *page)
 {
 	__ClearPageBuddy(page);
@@ -737,6 +743,19 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 	free_one_page(page_zone(page), page, order, migratetype);
 	local_irq_restore(flags);
 }
+
+#ifdef CONFIG_DYNAMIC_NUMA
+void return_pages_to_zone(struct page *page, unsigned int order,
+			  struct zone *zone)
+{
+	unsigned long flags;
+	local_irq_save(flags);
+	/* avoid a VM_BUG in __free_page_ok */
+	VM_BUG_ON(!TestClearPageBuddy(page));
+	free_one_page(zone, page, order, get_freepage_migratetype(page));
+	local_irq_restore(flags);
+}
+#endif
 
 /*
  * Read access to zone->managed_pages is safe because it's unsigned long,
