@@ -955,6 +955,7 @@ int move_freepages(struct zone *zone,
 	struct page *page;
 	unsigned long order;
 	int pages_moved = 0;
+	int zone_nid = zone_to_nid(zone);
 
 #ifndef CONFIG_HOLES_IN_ZONE
 	/*
@@ -968,10 +969,20 @@ int move_freepages(struct zone *zone,
 #endif
 
 	for (page = start_page; page <= end_page;) {
-		/* Make sure we are not inadvertently changing nodes */
-		VM_BUG_ON(page_to_nid(page) != zone_to_nid(zone));
-
 		if (!pfn_valid_within(page_to_pfn(page))) {
+			page++;
+			continue;
+		}
+
+		if (page_to_nid(page) != zone_nid) {
+#ifndef CONFIG_DYNAMIC_NUMA
+			/*
+			 * In the normal case (without Dynamic NUMA), all pages
+			 * in a pageblock should belong to the same zone (and
+			 * as a result all have the same nid).
+			 */
+			VM_BUG_ON(page_to_nid(page) != zone_nid);
+#endif
 			page++;
 			continue;
 		}
