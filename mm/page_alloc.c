@@ -643,13 +643,14 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 	int migratetype = 0;
 	int batch_free = 0;
 	int to_free = count;
+	struct page *pos, *page;
+	LIST_HEAD(need_move);
 
 	spin_lock(&zone->lock);
 	zone->all_unreclaimable = 0;
 	zone->pages_scanned = 0;
 
 	while (to_free) {
-		struct page *page;
 		struct list_head *list;
 
 		/*
@@ -672,11 +673,20 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 
 		do {
 			int mt;	/* migratetype of the to-be-freed page */
+			int dest_nid;
 
 			page = list_entry(list->prev, struct page, lru);
 			/* must delete as __free_one_page list manipulates */
 			list_del(&page->lru);
 			mt = get_freepage_migratetype(page);
+
+			dest_nid = dnuma_page_needs_move(page);
+			if (dest_nid != NUMA_NO_NODE) {
+				dnuma_prior_free_to_new_zone(page, dest_nid);
+				list_add(&page->lru, &need_move);
+				continue;
+			}
+
 			/* MIGRATE_MOVABLE list may include MIGRATE_RESERVEs */
 			__free_one_page(page, zone, 0, mt);
 			trace_mm_page_pcpu_drain(page, 0, mt);
@@ -688,6 +698,27 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		} while (--to_free && --batch_free && !list_empty(list));
 	}
 	spin_unlock(&zone->lock);
+
+	list_for_each_entry_safe(page, pos, &need_move, lru) {
+		struct zone *dest_zone = page_zone(page);
+		int mt;
+
+		spin_lock(&dest_zone->lock);
+
+		VM_BUG_ON(dest_zone != page_zone(page));
+		pr_devel("freeing pcp page %pK with changed node\n", page);
+		list_del(&page->lru);
+		mt = get_freepage_migratetype(page);
+		__free_one_page(page, dest_zone, 0, mt);
+		trace_mm_page_pcpu_drain(page, 0, mt);
+
+		/* XXX: fold into "post_free_to_new_zone()" ? */
+		if (is_migrate_cma(mt))
+			__mod_zone_page_state(dest_zone, NR_FREE_CMA_PAGES, 1);
+		dnuma_post_free_to_new_zone(dest_zone);
+
+		spin_unlock(&dest_zone->lock);
+	}
 }
 
 static void free_one_page(struct zone *zone, struct page *page, int order,
