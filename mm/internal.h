@@ -105,6 +105,14 @@ extern void prep_compound_page(struct page *page, unsigned long order);
 extern bool is_free_buddy_page(struct page *page);
 #endif
 
+#ifdef CONFIG_MEMORY_HOTPLUG
+/*
+ * in mm/memory_hotplug.c
+ */
+extern int ensure_zone_is_initialized(struct zone *zone,
+			unsigned long start_pfn, unsigned long num_pages);
+#endif
+
 #if defined CONFIG_COMPACTION || defined CONFIG_CMA
 
 /*
