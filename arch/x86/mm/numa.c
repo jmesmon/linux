@@ -34,7 +34,7 @@ __initdata
 ;
 
 #ifdef CONFIG_DYNAMIC_NUMA
-void __init arch_memlayout_init(void)
+void __init memlayout_global_init(void)
 {
 	struct numa_meminfo *mi = &numa_meminfo;
 	int i;
