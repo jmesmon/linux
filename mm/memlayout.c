@@ -582,7 +582,11 @@ void memlayout_commit(struct memlayout *ml)
 	ml_backlog_feed(old_ml);
 }
 
-int __init_memblock memlayout_init_from_memblock(void)
+/*
+ * The default memlayout global initializer, using memblock to determine affinities
+ */
+__weak
+int memlayout_global_init(void)
 {
 	int i, nid, errs = 0;
 	unsigned long start, end;

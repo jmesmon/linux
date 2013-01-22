@@ -102,15 +102,10 @@ void memlayout_commit_initial(struct memlayout *ml);
  */
 int memlayout_init_from_memblock(void) __init_memblock;
 
-/* defined in an arch code. Called in init/main.c following kmem_cache
- * initialization. */
-void arch_memlayout_init(void);
-
-#ifdef CONFIG_HAVE_ARCH_MEMLAYOUT_INIT
-#define memlayout_global_init() arch_memlayout_init()
-#else
-#define memlayout_global_init() memlayout_init_from_memblock()
-#endif
+/* Sets up an inital memlayout in early boot.
+ * A weak default which uses memblock is provided.
+ */
+void memlayout_global_init(void);
 
 #else /* ! defined(CONFIG_DYNAMIC_NUMA) */
 
