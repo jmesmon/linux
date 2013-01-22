@@ -485,7 +485,7 @@ int memlayout_pfn_to_nid_no_pageflags(unsigned long pfn)
 
 		if (greater_than_start && !less_than_end)
 			node = node->rb_right;
-		else if (!less_than_end && greater_than_start)
+		else if (less_than_end && !greater_than_start)
 			node = node->rb_left;
 		else {
 			int nid = rme->nid;
