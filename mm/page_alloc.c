@@ -994,11 +994,14 @@ int move_freepages(struct zone *zone,
 
 #if !defined(CONFIG_HOLES_IN_ZONE) && !defined(CONFIG_DYNAMIC_NUMA)
 	/*
-	 * page_zone is not safe to call in this context when
-	 * CONFIG_HOLES_IN_ZONE is set. This bug check is probably redundant
-	 * anyway as we check zone boundaries in move_freepages_block().
-	 * Remove at a later date when no bug reports exist related to
-	 * grouping pages by mobility
+	 * With CONFIG_HOLES_IN_ZONE set, this check is unsafe as start_page or
+	 * end_page may not be "valid".
+	 * With CONFIG_DYNAMIC_NUMA set, this condition is a valid occurence &
+	 * not a bug.
+	 *
+	 * This bug check is probably redundant anyway as we check zone
+	 * boundaries in move_freepages_block().  Remove at a later date when
+	 * no bug reports exist related to grouping pages by mobility
 	 */
 	BUG_ON(page_zone(start_page) != page_zone(end_page));
 #endif
@@ -1009,12 +1012,12 @@ int move_freepages(struct zone *zone,
 			continue;
 		}
 
-		/* Make sure we are not inadvertently changing nodes */
 		if (page_to_nid(page) != zone_nid) {
 #ifndef CONFIG_DYNAMIC_NUMA
 			/*
 			 * In the normal case (without Dynamic NUMA), all pages
-			 * in a pageblock should belong to the same zone.
+			 * in a pageblock should belong to the same zone (and
+			 * as a result all have the same nid).
 			 */
 			VM_BUG_ON(page_to_nid(page) != zone_nid);
 #endif
