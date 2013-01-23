@@ -1,3 +1,9 @@
+/*
+ * memlayout - provides a mapping of PFN ranges to nodes with the requirements
+ * that looking up a node from a PFN is fast, and changes to the mapping will
+ * occour relatively infrequently.
+ *
+ */
 #define pr_fmt(fmt) "memlayout: " fmt
 
 #include <linux/atomic.h>
@@ -12,26 +18,6 @@
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
 
-/* Need to map an index (in this case, memory ranges/regions) to the range set
- * it belongs to.  Overlapping is not allowed, so iterval/sequence trees are
- * not needed
- */
-
-/* Reasoning:
- * - using memblock to look up the region associated with a address is
- *   slow (and they don't have a public function that does that)
- * - mips, sh, x86, ia64, s390, and score all discard memblock after
- *   __init time.
- */
-
-/* XXX: Issues
- * - will kmalloc() and friends be avaliable?
- * - should we use some of our vm space? (or make that an option)?
- * - node locality concerns: per node allocation? <----
- * - how large is this, really?
- * - use a kmem_cache? or a custom allocator to split pages?
- */
-
 /* protected by update_lock */
 __rcu struct memlayout *pfn_to_node_map;
 
@@ -40,26 +26,12 @@ static DEFINE_MUTEX(update_lock);
 #define ml_update_unlock() mutex_unlock(&update_lock)
 #define ml_update_is_locked() mutex_is_locked(&update_lock)
 
-#define kfree_complete_rbtree(root, type, field)	\
-		rbtree_postorder_apply_safe(root, type, field, kfree)
-
-#define rbtree_postorder_for_each_entry_safe(pos, n, root, field)		\
-	for (pos = rb_entry(rb_first_postorder(root), typeof(*pos), field),	\
-	      n = rb_entry(rb_next_postorder(&pos->field), typeof(*pos), field);	\
-	     &pos->field;							\
-	     pos = n,								\
-	      n = rb_entry(rb_next_postorder(&pos->field), typeof(*pos), field))
-
-#define rbtree_postorder_apply_safe(root, type, field, applyable) do {		\
-		type *__kcr_entry, *__kcr_next;					\
-		rbtree_postorder_for_each_entry_safe(__kcr_entry, __kcr_next, root, field) { \
-			applyable(__kcr_entry);					\
-		}								\
-	} while (0)
-
 static void free_rme_tree(struct rb_root *root)
 {
-	kfree_complete_rbtree(root, struct rangemap_entry, node);
+	struct rangemap_entry *pos, *n;
+	rbtree_postorder_for_each_entry_safe(pos, n, root, node) {
+		kfree(pos);
+	}
 }
 
 static void ml_destroy_mem(struct memlayout *ml)
