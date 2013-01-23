@@ -111,6 +111,7 @@ void dnuma_move_to_new_ml(struct memlayout *new_ml)
 	/* migrate types?
 	 * ISOLATION?
 	 */
+	lock_memory_hotplug();
 	struct rangemap_entry *rme;
 	ml_for_each_range(new_ml, rme) {
 		int range_nid = rme->nid;
@@ -200,4 +201,6 @@ skip_unlock:
 			spin_unlock_irqrestore(&zone->lock, flags);
 		}
 	}
+
+	unlock_memory_hotplug();
 }
