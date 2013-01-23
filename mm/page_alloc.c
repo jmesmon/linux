@@ -1008,15 +1008,18 @@ int move_freepages(struct zone *zone,
 			continue;
 		}
 
-#ifndef CONFIG_DYNAMIC_NUMA
 		/* Make sure we are not inadvertently changing nodes */
-		VM_BUG_ON(page_to_nid(page) != zone_nid);
-#else
 		if (page_to_nid(page) != zone_nid) {
+#ifndef CONFIG_DYNAMIC_NUMA
+			/*
+			 * In the normal case (without Dynamic NUMA), all pages
+			 * in a pageblock should belong to the same zone.
+			 */
+			VM_BUG_ON(page_to_nid(page) != zone_nid);
+#endif
 			page++;
 			continue;
 		}
-#endif
 
 		if (!PageBuddy(page)) {
 			page++;
