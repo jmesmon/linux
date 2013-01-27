@@ -23,3 +23,4 @@ if gdb_version < "7.1":
 else:
 	import utils
 	import symbols
+	import module
