@@ -43,6 +43,39 @@ def per_cpu(var_ptr, cpu):
 	pointer = var_ptr.cast(get_long_type()) + offset
 	return pointer.cast(var_ptr.type).dereference()
 
+cpu_mask = { }
+
+def for_each_cpu(mask_name, func, arg = None):
+	def invalidate_handler(event):
+		global cpu_online_mask
+		cpu_mask = { }
+		gdb.events.stop.disconnect(invalidate_handler)
+		gdb.events.new_objfile.disconnect(invalidate_handler)
+
+	global cpu_mask
+	mask = None
+	if mask_name in cpu_mask:
+		mask = cpu_mask[mask_name]
+	if mask == None:
+		mask = gdb.parse_and_eval(mask_name + ".bits")
+		cpu_mask[mask_name] = mask
+		gdb.events.stop.connect(invalidate_handler)
+		gdb.events.new_objfile.connect(invalidate_handler)
+
+	max_cpu_id = mask.type.sizeof * 8
+	bits_per_entry = mask[0].type.sizeof * 8
+	for entry in range(max_cpu_id / bits_per_entry):
+		bits = mask[entry]
+		if bits == 0:
+			continue
+		for bit in range(bits_per_entry):
+			if bits & 1:
+				cpu = entry * bits_per_entry + bit
+				func(cpu, arg)
+			bits >>= 1
+			if bits == 0:
+				break
+
 
 class PerCpu(gdb.Function):
 	__doc__ = "Return per-cpu variable.\n" \
