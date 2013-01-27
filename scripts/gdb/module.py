@@ -15,6 +15,7 @@ import gdb
 import os
 import string
 
+from percpu import *
 from utils import *
 
 module_type = CachedType("struct module")
@@ -104,3 +105,45 @@ class LxModvar(gdb.Function):
 		return var_addr.cast(var.type.pointer()).dereference()
 
 LxModvar()
+
+
+class LinuxLsmod(gdb.Command):
+	__doc__ = "List currently loaded modules."
+
+	_module_use_type = CachedType("struct module_use")
+
+	def __init__(self):
+		super(LinuxLsmod, self).__init__("lx-lsmod", gdb.COMMAND_DATA)
+
+	def invoke(self, arg, from_tty):
+		def print_module(module, arg):
+			def collect_ref(cpu, arg):
+				refptr = per_cpu(arg['refptr'], cpu)
+				arg['ref'] += refptr['incs']
+				arg['ref'] -= refptr['decs']
+
+			arg = { 'refptr': module['refptr'], 'ref': 0 }
+			for_each_cpu("cpu_possible_mask", collect_ref, arg)
+
+			print "%s" % module['module_core'] + \
+			      " %-19s" % module['name'].string() + \
+			      " %8s" % module['core_size'] + \
+			      "  %d" % arg['ref'],
+
+			source_list = module['source_list']
+			t = self._module_use_type.get_type().pointer()
+			entry = source_list['next']
+			first = True
+			while entry != source_list.address:
+				use = container_of(entry, t, "source_list")
+				gdb.write((" " if first else ",") + \
+					  use['source']['name'].string())
+				first = False
+				entry = entry['next']
+			print
+
+		print "Address%s    Module                  Size  Used by" % \
+		      "        " if get_long_type().sizeof == 8 else ""
+		for_each_module(print_module)
+
+LinuxLsmod()
