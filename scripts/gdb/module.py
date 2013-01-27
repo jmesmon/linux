@@ -12,6 +12,8 @@
 #
 
 import gdb
+import os
+import string
 
 from utils import *
 
@@ -56,3 +58,49 @@ class LxModule(gdb.Function):
 			raise gdb.GdbError("Unable to find MODULE " + mod_name)
 
 LxModule()
+
+
+class LxModvar(gdb.Function):
+	__doc__ = "Return global variable of a module.\n" \
+		  "\n" \
+		  "$lx_modvar(\"VAR\"[, \"MODULE\"]): Return the global variable called VAR that is\n" \
+		  "defined by given MODULE. If MODULE is omitted, the current frame is used to\n" \
+		  "try finding the corresponding module name."
+
+	def __init__(self):
+		super(LxModvar, self).__init__("lx_modvar")
+
+	def _lookup_mod_symbol(self, module, var_name):
+		char_ptr_type = get_char_type().pointer()
+		for i in range(0, int(module['num_symtab'])):
+			symtab_entry = module['symtab'][i]
+			idx = int(symtab_entry['st_name'])
+			synname_addr = module['strtab'][idx].address
+			symname = synname_addr.cast(char_ptr_type)
+			if symname.string() == var_name:
+				return symtab_entry['st_value']
+		return None
+
+	def invoke(self, var_name, mod_name = None):
+		if (mod_name == None):
+			obj = gdb.selected_frame().function().symtab.objfile
+			mod_name = string.replace(
+				os.path.basename(obj.filename), ".ko", "")
+			module = find_module_by_name(mod_name)
+			if module == None:
+				raise gdb.GdbError("Current frame does not " \
+						   "belong to a module")
+		else:
+			mod_name = mod_name.string()
+			module = find_module_by_name(mod_name)
+			if module == None:
+				raise gdb.GdbError("Unable to find MODULE " +
+						   mod_name)
+		var_name = var_name.string()
+		var_addr = self._lookup_mod_symbol(module, var_name)
+		if var_addr == None:
+			raise gdb.GdbError("Unable to find VAR " + var_name)
+		var = gdb.parse_and_eval(var_name)
+		return var_addr.cast(var.type.pointer()).dereference()
+
+LxModvar()

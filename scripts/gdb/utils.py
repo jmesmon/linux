@@ -45,6 +45,13 @@ def get_long_type():
 	return long_type.get_type()
 
 
+char_type = CachedType("char")
+
+def get_char_type():
+	global char_type
+	return char_type.get_type()
+
+
 def offset_of(typeobj, field):
 	element = gdb.Value(0).cast(typeobj)
 	return int(str(element[field].address).split()[0], 16)
