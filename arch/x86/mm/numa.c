@@ -855,7 +855,7 @@ int memory_add_physaddr_to_nid(u64 start)
 			nid = mi->blk[i].nid;
 	return nid;
 #else /* CONFIG_DYNAMIC_NUMA */
-	int nid = memlayout_pfn_to_nid_no_pageflags(PFN_DOWN(start));
+	int nid = memlayout_pfn_to_nid(PFN_DOWN(start));
 	if (nid == NUMA_NO_NODE)
 		/* XXX: what is mi->blk[0].nid (from above)? Simply an arbitrary valid nid? */
 		return 0;
