@@ -735,24 +735,6 @@ static void free_one_page(struct zone *zone, struct page *page, int order,
 	spin_unlock(&zone->lock);
 }
 
-#ifdef CONFIG_DYNAMIC_NUMA
-static void return_one_page(struct zone *zone, struct page *page, int order,
-				int migratetype)
-{
-	pr_debug("return_one_page: zone %pK page %pK page_zone %pK order %d mgt %d\n",
-			zone, page, page_zone(page), order, migratetype);
-	spin_lock(&zone->lock);
-	zone->all_unreclaimable = 0;
-	zone->pages_scanned = 0;
-
-	/* clear to avoid a VM_BUG in __free_one_page */
-	__free_one_page(page, zone, order, migratetype);
-	if (unlikely(migratetype != MIGRATE_ISOLATE))
-		__mod_zone_freepage_state(zone, 1 << order, migratetype);
-	spin_unlock(&zone->lock);
-}
-#endif
-
 static bool free_pages_prepare(struct page *page, unsigned int order)
 {
 	int i;
