@@ -1050,26 +1050,29 @@ static void rollback_node_hotadd(int nid, pg_data_t *pgdat)
 	return;
 }
 
+int __mem_online_node(int nid)
+{
+	pg_data_t *pgdat;
+	int ret;
+
+	pgdat = hotadd_new_pgdat(nid, 0);
+	if (!pgdat)
+		return -ENOMEM;
+
+	node_set_online(nid);
+	ret = register_one_node(nid);
+	BUG_ON(ret);
+	return ret;
+}
 
 /*
  * called by cpu_up() to online a node without onlined memory.
  */
 int mem_online_node(int nid)
 {
-	pg_data_t	*pgdat;
-	int	ret;
-
+	int ret;
 	lock_memory_hotplug();
-	pgdat = hotadd_new_pgdat(nid, 0);
-	if (!pgdat) {
-		ret = -ENOMEM;
-		goto out;
-	}
-	node_set_online(nid);
-	ret = register_one_node(nid);
-	BUG_ON(ret);
-
-out:
+	ret = __mem_online_node(nid);
 	unlock_memory_hotplug();
 	return ret;
 }
