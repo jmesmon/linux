@@ -22,9 +22,6 @@
 __rcu struct memlayout *pfn_to_node_map;
 
 static DEFINE_MUTEX(update_lock);
-#define ml_update_lock()   mutex_lock(&update_lock)
-#define ml_update_unlock() mutex_unlock(&update_lock)
-#define ml_update_is_locked() mutex_is_locked(&update_lock)
 
 static void free_rme_tree(struct rb_root *root)
 {
@@ -107,7 +104,7 @@ static void _ml_dbgfs_create_range(struct dentry *base,
 				rme->pfn_start, rme->pfn_end, rme->nid);
 }
 
-/* Must be called under ml_update_lock() */
+/* Must be called under mutex_lock(&update_lock) */
 static void _ml_dbgfs_set_current(struct memlayout *ml, char *name)
 {
 	ml_layout_name(ml, name);
@@ -217,10 +214,10 @@ static void ml_dbgfs_create_initial_layout(void)
 	if (WARN(!new_ml, "memlayout allocation failed\n"))
 		return;
 
-	ml_update_lock();
+	mutex_lock(&update_lock);
 
 	old_ml = rcu_dereference_protected(pfn_to_node_map,
-			ml_update_is_locked());
+			mutex_is_locked(&update_lock));
 	if (WARN_ON(!old_ml))
 		goto e_out;
 	*new_ml = *old_ml;
@@ -240,13 +237,13 @@ static void ml_dbgfs_create_initial_layout(void)
 
 	_ml_dbgfs_set_current(new_ml, name);
 	rcu_assign_pointer(pfn_to_node_map, new_ml);
-	ml_update_unlock();
+	mutex_unlock(&update_lock);
 
 	synchronize_rcu();
 	kfree(old_ml);
 	return;
 e_out:
-	ml_update_unlock();
+	mutex_unlock(&update_lock);
 	kfree(new_ml);
 }
 
@@ -429,7 +426,7 @@ static inline bool rme_bounds_pfn(struct rangemap_entry *rme, unsigned long pfn)
 	return rme->pfn_start <= pfn && pfn <= rme->pfn_end;
 }
 
-int memlayout_pfn_to_nid_no_pageflags(unsigned long pfn)
+int memlayout_pfn_to_nid(unsigned long pfn)
 {
 	struct rb_node *node;
 	struct memlayout *ml;
@@ -439,7 +436,6 @@ int memlayout_pfn_to_nid_no_pageflags(unsigned long pfn)
 	if (!ml || (ml->type == ML_INITIAL))
 		goto out;
 
-	/* FIXME: hack that assumes reading & writing a pointer is atomic */
 	rme = ACCESS_ONCE(ml->cache);
 	if (rme && rme_bounds_pfn(rme, pfn)) {
 		rcu_read_unlock();
@@ -460,13 +456,10 @@ int memlayout_pfn_to_nid_no_pageflags(unsigned long pfn)
 		else if (less_than_end && !greater_than_start)
 			node = node->rb_left;
 		else {
-			int nid = rme->nid;
 			/* greater_than_start && less_than_end.
 			 *  the case (!greater_than_start  && !less_than_end)
 			 *  is impossible */
-			/* FIXME: here the ACCESS_ONCE is mainly for anotation,
-			 * there aren't repeated uses that would cause issues.
-			 * */
+			int nid = rme->nid;
 			ACCESS_ONCE(ml->cache) = rme;
 			rcu_read_unlock();
 			return nid;
@@ -513,58 +506,59 @@ void memlayout_commit(struct memlayout *ml)
 			return;
 		}
 
-		ml_update_lock();
+		mutex_lock(&update_lock);
 		ml_dbgfs_set_current(ml);
 		rcu_assign_pointer(pfn_to_node_map, ml);
-		ml_update_unlock();
+		mutex_unlock(&update_lock);
 		return;
 	}
 
-	/* locks & unlocks *_memory_hotplug() */
-	dnuma_online_required_nodes(ml);
+	lock_memory_hotplug();
+	dnuma_online_required_nodes_and_zones(ml);
+	unlock_memory_hotplug();
 
-	ml_update_lock();
-
+	mutex_lock(&update_lock);
 	ml_dbgfs_set_current(ml);
-
 	old_ml = rcu_dereference_protected(pfn_to_node_map,
-			ml_update_is_locked());
+			mutex_is_locked(&update_lock));
 
-	dnuma_move_to_new_ml(ml);
-
-	/* FIXME: in this interviening time between dnuma_move_to_new_ml() and
-	 * assiging a new pfn_to_node_map, pages would be freed to the old ml
-	 * */
-
-	/* must occur after dnuma_move_to_new_ml() as dnuma_move_to_new_ml()
-	 * sets up uninitialized zones which would otherwise be used
-	 * uninitialized in the free path */
 	rcu_assign_pointer(pfn_to_node_map, ml);
-
-	dnuma_mark_page_range(ml);
-
-	/* Must be done after the free_lists are emptied of pages which need
-	 * transplanting, otherwise pages could be reallocated from the wrong
-	 * nodes. */
-	drain_all_pages();
-
-	ml_update_unlock();
 
 	synchronize_rcu();
 	ml_backlog_feed(old_ml);
+
+	/* Must be called only after the new value for pfn_to_node_map has
+	 * propogated to all tasks, otherwise some pages may lookup the old
+	 * pfn_to_node_map on free & not transplant themselves to their new
+	 * node. */
+	dnuma_mark_page_range(ml);
+
+	/* Do this after the free path is set up so that pages are free'd into
+	 * their "new" zones so that after this completes, no free pages in the
+	 * wrong zone remain. */
+	dnuma_move_unallocated_pages(ml);
+
+	/* All new _non pcp_ page allocations are now optimal */
+	drain_all_pages();
+	/* All new page allocations are now optimal */
+
+	mutex_unlock(&update_lock);
 }
 
 /*
  * The default memlayout global initializer, using memblock to determine affinities
+ * reqires: slab_is_available() && memblock is not (yet) freed.
+ * sleeps: definitely: memlayout_commit() -> synchronize_rcu()
+ *	   potentially: kmalloc()
  */
-__weak
-int memlayout_global_init(void)
+__weak __meminit
+void memlayout_global_init(void)
 {
 	int i, nid, errs = 0;
 	unsigned long start, end;
 	struct memlayout *ml = memlayout_create(ML_INITIAL);
 	if (WARN_ON(!ml))
-		return -ENOMEM;
+		return;
 
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, &nid) {
 		int r = memlayout_new_range(ml, start, end - 1, nid);
@@ -578,7 +572,6 @@ int memlayout_global_init(void)
 	}
 
 	memlayout_commit(ml);
-	return errs;
 }
 
 #ifdef CONFIG_MEMORY_HOTPLUG
