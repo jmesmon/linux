@@ -682,7 +682,10 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 
 			dest_nid = dnuma_page_needs_move(page);
 			if (dest_nid != NUMA_NO_NODE) {
-				dnuma_prior_free_to_new_zone(page, dest_nid);
+				dnuma_prior_free_to_new_zone(page, 0,
+						nid_zone(dest_nid,
+							page_zonenum(page)),
+						dest_nid);
 				list_add(&page->lru, &need_move);
 				continue;
 			}
@@ -715,7 +718,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		/* XXX: fold into "post_free_to_new_zone()" ? */
 		if (is_migrate_cma(mt))
 			__mod_zone_page_state(dest_zone, NR_FREE_CMA_PAGES, 1);
-		dnuma_post_free_to_new_zone(dest_zone);
+		dnuma_post_free_to_new_zone(page, 0);
 
 		spin_unlock(&dest_zone->lock);
 	}
@@ -764,6 +767,13 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 {
 	unsigned long flags;
 	int migratetype;
+	int dest_nid = dnuma_page_needs_move(page);
+	struct zone *zone;
+
+	if (dest_nid != NUMA_NO_NODE)
+		zone = nid_zone(dest_nid, page_zonenum(page));
+	else
+		zone = page_zone(page);
 
 	if (!free_pages_prepare(page, order))
 		return;
@@ -772,7 +782,11 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 	__count_vm_events(PGFREE, 1 << order);
 	migratetype = get_pageblock_migratetype(page);
 	set_freepage_migratetype(page, migratetype);
-	free_one_page(dnuma_move_free_page_zone(page), page, order, migratetype);
+	if (dest_nid != NUMA_NO_NODE)
+		dnuma_prior_free_to_new_zone(page, order, zone, dest_nid);
+	free_one_page(zone, page, order, migratetype);
+	if (dest_nid != NUMA_NO_NODE)
+		dnuma_post_free_to_new_zone(page, order);
 	local_irq_restore(flags);
 }
 
@@ -782,8 +796,6 @@ void return_pages_to_zone(struct page *page, unsigned int order,
 {
 	unsigned long flags;
 	local_irq_save(flags);
-	/* avoid a VM_BUG in __free_page_ok */
-	VM_BUG_ON(!TestClearPageBuddy(page));
 	free_one_page(zone, page, order, get_freepage_migratetype(page));
 	local_irq_restore(flags);
 }
@@ -1393,9 +1405,10 @@ void free_hot_cold_page(struct page *page, int cold)
 
 	dest_nid = dnuma_page_needs_move(page);
 	if (dest_nid != NUMA_NO_NODE) {
-		struct zone *dest_zone = dnuma_prior_free_to_new_zone(page, dest_nid);
+		struct zone *dest_zone = nid_zone(dest_nid, page_zonenum(page));
+		dnuma_prior_free_to_new_zone(page, 0, dest_zone, dest_nid);
 		free_one_page(dest_zone, page, 0, migratetype);
-		dnuma_post_free_to_new_zone(dest_zone);
+		dnuma_post_free_to_new_zone(page, 0);
 		goto out;
 	}
 
