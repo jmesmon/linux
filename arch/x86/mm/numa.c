@@ -842,10 +842,9 @@ EXPORT_SYMBOL(cpumask_of_node);
 
 #endif	/* !CONFIG_DEBUG_PER_CPU_MAPS */
 
-#ifdef CONFIG_MEMORY_HOTPLUG
+#ifdef defined(CONFIG_MEMORY_HOTPLUG) && !defined(CONFIG_DYNAMIC_NUMA)
 int memory_add_physaddr_to_nid(u64 start)
 {
-#ifndef CONFIG_DYNAMIC_NUMA
 	struct numa_meminfo *mi = &numa_meminfo;
 	int nid = mi->blk[0].nid;
 	int i;
@@ -854,13 +853,6 @@ int memory_add_physaddr_to_nid(u64 start)
 		if (mi->blk[i].start <= start && mi->blk[i].end > start)
 			nid = mi->blk[i].nid;
 	return nid;
-#else /* CONFIG_DYNAMIC_NUMA */
-	int nid = memlayout_pfn_to_nid(PFN_DOWN(start));
-	if (nid == NUMA_NO_NODE)
-		/* XXX: what is mi->blk[0].nid (from above)? Simply an arbitrary valid nid? */
-		return 0;
-	return nid;
-#endif
 }
 EXPORT_SYMBOL_GPL(memory_add_physaddr_to_nid);
 #endif
