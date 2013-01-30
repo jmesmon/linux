@@ -151,7 +151,7 @@ static void clear_lookup_node(struct page *page, int order)
 {
 	int i;
 	for (i = 0; i < 1 << order; i++)
-		ClearLookupNode(&page[i]);
+		ClearPageLookupNode(&page[i]);
 }
 
 /* Does not assume it is called with any locking (but can be called with zone
