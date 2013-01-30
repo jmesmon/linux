@@ -812,10 +812,14 @@ void __cpuinit numa_remove_cpu(int cpu)
 const struct cpumask *cpumask_of_node(int node)
 {
 	if (node >= nr_node_ids) {
+		/* XXX: this ifdef should be removed when proper cpu to node
+		 * mapping updates are added */
+#ifndef CONFIG_DYNAMIC_NUMA
 		printk(KERN_WARNING
 			"cpumask_of_node(%d): node > nr_node_ids(%d)\n",
 			node, nr_node_ids);
 		dump_stack();
+#endif
 		return cpu_none_mask;
 	}
 	if (node_to_cpumask_map[node] == NULL) {
