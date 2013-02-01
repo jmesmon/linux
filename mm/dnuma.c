@@ -6,46 +6,13 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/atomic.h>
+#include <linux/memory.h>
 
 #include "internal.h"
 
 #if CONFIG_DNUMA_DEBUGFS
 atomic64_t dnuma_moved_page_ct;
 #endif
-
-/* Options wrt removing free pages from free lists:
- * - Isolation? - NO.
- *   - Can't determine which page ranges to isolate (memory belonging to this
- *     zone could be anywhwre)
- *   - too many things being isolated could trigger OOM.
- *   - Not too terrible if some stuff is allocated.
- * - lock zone & then grab a "bunch", lock new zone & give it a "bunch".
- * - Selecting pages to move
- *   - iterate over pfns
- *     - with dnuma, zones grow very large, could result in iterating over all
- *       pfns on the system.
- *     - pfns we examine could belong to a different zone, requiring skipping.
- *     - Fits with "destination" focus
- *   - iterate over free lists
- *     - pointer dereferences are not as fast as addition (pfn ++, etc).
- *     - all pages belong to the current zone, no skipping.
- *     - Fits with "source" focus
- * - Focus on the source zone or the destination zone (complexities are per
- *   zone operation, so don't really represent actual cost)
- *   - source
- *     - grab all pages in 1 source zone that need moving to any number of
- *       other zones.
- *     - repeat for each source zone. TC=O(n), MC=O(n).
- *   - destination
- *     - grab all pages from various sources which will be moved to 1
- *       destination.
- *     - repeat for each destination zone. TC=O(n), MC=O(1).
- *     - Potentially very high amount of locking/unlocking.
- *   - mixed
- *     - grab all pages in 1 source which need moving to 1 other zone.
- *     - repeat for all pairs of zones. TC = O(n^n), MC = O(1).
- *     - High time complexity. Does this actually represent a real slowdown?
- */
 
 /* Issues due to pageflag_blocks attached to zones with Discontig Mem (&
  * Flatmem??).
@@ -80,7 +47,41 @@ void dnuma_online_required_nodes_and_zones(struct memlayout *new_ml)
 
 		if (!node_online(nid)) {
 			pr_debug("onlining node %d\n", nid);
+			/* Consult hotadd_new_pgdat() */
 			__mem_online_node(nid);
+
+			/* XXX: somewhere in here do a memory online notify: we
+			 * aren't really onlining memory, but some code uses
+			 * memory online notifications to tell if new nodes
+			 * have been created.
+			 *
+			 * Also note that the notifyers expect to be able to do
+			 * allocations, ie we must allow for might_sleep() */
+			{
+				int ret;
+
+				/* memory_notify() expects:
+				 *	- to add pages at the same time
+				 *	- to add zones at the same time
+				 * We can do neither of these things.
+				 *
+				 * FIXME: Right now we just set the things
+				 * needed by the slub handler.
+				 */
+				struct memory_notify arg = {
+					.status_change_nid_normal = nid,
+				};
+
+				ret = memory_notify(MEM_GOING_ONLINE, &arg);
+				ret = notifier_to_errno(ret);
+				if (WARN_ON(ret)) {
+					/* XXX: other stuff will bug out if we
+					 * keep going, need to actually cancel
+					 * memlayout changes
+					 */
+					memory_notify(MEM_CANCEL_ONLINE, &arg);
+				}
+			}
 		}
 
 		/* Determine the zones required */
@@ -90,6 +91,10 @@ void dnuma_online_required_nodes_and_zones(struct memlayout *new_ml)
 				continue;
 
 			zone = nid_zone(nid, page_zonenum(pfn_to_page(pfn)));
+			/* XXX: we (dnuma paths) can handle this (there will
+			 * just be quite a few WARNS in the logs), but if we
+			 * are indicating error above, should we bail out here
+			 * as well? */
 			WARN_ON(ensure_zone_is_initialized(zone, 0, 0));
 		}
 	}
@@ -108,8 +113,10 @@ void dnuma_mark_page_range(struct memlayout *new_ml)
 		for (pfn = rme->pfn_start; pfn <= rme->pfn_end; pfn++) {
 			if (!pfn_valid(pfn))
 				continue;
-			/* FIXME: should we be skipping compound / buddied pages? */
-			/* FIXME: if PageReserved(), can we just poke the nid directly? */
+			/* FIXME: should we be skipping compound / buddied
+			 *        pages? */
+			/* FIXME: if PageReserved(), can we just poke the nid
+			 *        directly? Should we? */
 			SetPageLookupNode(pfn_to_page(pfn));
 		}
 	}
@@ -289,10 +296,10 @@ void __ref dnuma_move_unallocated_pages(struct memlayout *new_ml)
 				node_set_state(range_nid, N_MEMORY);
 
 			if (need_zonelists_rebuild)
-				/* XXX: also does stop_machine */
+				/* XXX: also does stop_machine() */
 				build_all_zonelists(NULL, dest_zone);
 			else
-				/* FIXME: does stop_machine after EVERY SINGLE PAGE */
+				/* FIXME: does stop_machine() after EVERY SINGLE PAGE */
 				zone_pcp_update(dest_zone);
 
 			pfn = last_pfn;
