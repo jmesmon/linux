@@ -763,6 +763,7 @@ int __ref online_pages(unsigned long pfn, unsigned long nr_pages, int online_typ
 
 	zone->managed_pages += onlined_pages;
 	zone->present_pages += onlined_pages;
+	/* FIXME: should be protected by pgdat_resize_lock() */
 	zone->zone_pgdat->node_present_pages += onlined_pages;
 	if (onlined_pages) {
 		node_states_set_node(zone_to_nid(zone), &arg);
