@@ -141,8 +141,7 @@ Normally, the write_lock() and write_unlock() would be replaced by
 a spin_lock() and a spin_unlock(), but in this case, all callers hold
 audit_netlink_sem, so no additional locking is required.  The auditsc_lock
 can therefore be eliminated, since use of RCU eliminates the need for
-writers to exclude readers.  Normally, the write_lock() calls would
-be converted into spin_lock() calls.
+writers to exclude readers.
 
 The list_del(), list_add(), and list_add_tail() primitives have been
 replaced by list_del_rcu(), list_add_rcu(), and list_add_tail_rcu().
@@ -266,6 +265,9 @@ Additional mechanism is required to deal correctly with the
 update-in-place performed by audit_upd_rule().  For one thing,
 audit_upd_rule() would need additional memory barriers to ensure
 that the list_add_rcu() was really executed before the list_del_rcu().
+
+XXX: list_add_rcu() & list_del_rcu() are not used in the audit_upd_rule()
+example.
 
 The audit_del_rule() function would need to set the "deleted"
 flag under the spinlock as follows:
