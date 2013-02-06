@@ -713,7 +713,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		pr_devel("freeing pcp page %pK with changed node\n", page);
 		list_del(&page->lru);
 		mt = get_freepage_migratetype(page);
-		__free_one_page(page, dest_zone, 0, mt, false);
+		__free_one_page(page, dest_zone, 0, mt);
 		trace_mm_page_pcpu_drain(page, 0, mt);
 
 		/* XXX: fold into "post_free_to_new_zone()" ? */
