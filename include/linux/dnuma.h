@@ -14,7 +14,7 @@ extern atomic64_t dnuma_moved_page_ct;
 void dnuma_online_required_nodes_and_zones(struct memlayout *new_ml);
 
 /* Must be called _after_ setting new_ml to the pfn_to_node_map */
-void dnuma_move_unallocated_pages(struct memlayout *new_ml);
+void dnuma_move_free_pages(struct memlayout *new_ml);
 void dnuma_mark_page_range(struct memlayout *new_ml);
 
 static inline bool dnuma_is_active(void)
@@ -32,7 +32,7 @@ static inline bool dnuma_is_active(void)
 
 static inline bool dnuma_has_memlayout(void)
 {
-	return !!pfn_to_node_map;
+	return !!rcu_access_pointer(pfn_to_node_map);
 }
 
 static inline int dnuma_page_needs_move(struct page *page)
@@ -46,9 +46,15 @@ static inline int dnuma_page_needs_move(struct page *page)
 	if (WARN_ON(!dnuma_is_active()))
 		return NUMA_NO_NODE;
 
-	/* FIXME: and so does this (rcu lock, deref, and unlock */
+	/* FIXME: and so does this (rcu lock, deref, and unlock) */
 	new_nid = memlayout_pfn_to_nid(page_to_pfn(page));
 	old_nid = page_to_nid(page);
+
+	if (new_nid == NUMA_NO_NODE) {
+		pr_alert("dnuma: pfn %05lx has moved from node %d to a non-memlayout range.\n",
+				page_to_pfn(page), old_nid);
+		return NUMA_NO_NODE;
+	}
 
 	if (new_nid == old_nid)
 		return NUMA_NO_NODE;
