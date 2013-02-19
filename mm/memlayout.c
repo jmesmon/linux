@@ -92,7 +92,7 @@ static void _ml_dbgfs_create_range(struct dentry *base,
 		struct rangemap_entry *rme, char *name)
 {
 	struct dentry *rd;
-	sprintf(name, "%lX-%lX", rme->pfn_start, rme->pfn_end);
+	sprintf(name, "%05lx-%05lx", rme->pfn_start, rme->pfn_end);
 	rd = debugfs_create_file(name, 0400, base,
 				(void *)rme->nid, &range_fops);
 	if (!rd)
@@ -169,7 +169,7 @@ static int dnuma_user_node_watch(u32 old_val, u32 new_val)
 		goto out;
 	}
 
-	if (dnuma_user_start == dnuma_user_end) {
+	if (dnuma_user_start > dnuma_user_end) {
 		ret = -EINVAL;
 		goto out;
 	}
