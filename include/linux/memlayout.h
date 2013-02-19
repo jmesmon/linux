@@ -65,6 +65,8 @@ extern __rcu struct memlayout *pfn_to_node_map;
 	     &rme->node;						\
 	     rme = rb_entry(rb_next(&rme->node), typeof(*rme), node))
 
+#define rme_next(rme) rb_entry(rb_next(&rme->node), typeof(*rme), node)
+
 struct memlayout *memlayout_create(enum memlayout_type);
 void              memlayout_destroy(struct memlayout *ml);
 
