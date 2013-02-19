@@ -12,6 +12,12 @@
 
 #if CONFIG_DNUMA_DEBUGFS
 atomic64_t dnuma_moved_page_ct;
+static inline void count_moved_pages(int order)
+{
+	atomic64_add(1 << order, &dnuma_moved_page_ct);
+}
+#else
+static inline void count_moved_pages(int order) {}
 #endif
 
 /* Issues due to pageflag_blocks attached to zones with Discontig Mem (&
@@ -143,8 +149,8 @@ static void node_states_set_node(int node, struct memory_notify *arg)
 
 void dnuma_post_free_to_new_zone(struct page *page, int order)
 {
-	/* LOCKS. BLAH */
 	adjust_zone_present_pages(page_zone(page), (1 << order));
+	count_moved_pages(order);
 }
 
 static void dnuma_prior_return_to_new_zone(struct page *page, int order,
