@@ -20,7 +20,6 @@
 
 /* protected by update_lock */
 __rcu struct memlayout *pfn_to_node_map;
-
 static DEFINE_MUTEX(update_lock);
 
 static void free_rme_tree(struct rb_root *root)
@@ -400,7 +399,7 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
 
 	if (WARN_ON(nid < 0))
 		return -EINVAL;
-	if (WARN_ON(nid > MAX_NUMNODES))
+	if (WARN_ON(nid >= MAX_NUMNODES))
 		return -EINVAL;
 
 	if (find_insertion_point(ml, pfn_start, pfn_end, nid, &new, &parent))
@@ -536,7 +535,7 @@ void memlayout_commit(struct memlayout *ml)
 	/* Do this after the free path is set up so that pages are free'd into
 	 * their "new" zones so that after this completes, no free pages in the
 	 * wrong zone remain. */
-	dnuma_move_unallocated_pages(ml);
+	dnuma_move_free_pages(ml);
 
 	/* All new _non pcp_ page allocations are now optimal */
 	drain_all_pages();
@@ -563,11 +562,11 @@ void memlayout_global_init(void)
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, &nid) {
 		int r = memlayout_new_range(ml, start, end - 1, nid);
 		if (r) {
-			pr_err("failed to add range [%lx, %lx] in node %d to mapping\n",
+			pr_err("failed to add range [%05lx, %05lx] in node %d to mapping\n",
 					start, end, nid);
 			errs++;
 		} else
-			pr_devel("added range [%lx, %lx] in node %d\n",
+			pr_devel("added range [%05lx, %05lx] in node %d\n",
 					start, end, nid);
 	}
 
