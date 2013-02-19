@@ -38,6 +38,10 @@ static void ml_destroy_mem(struct memlayout *ml)
 	kfree(ml);
 }
 
+#ifndef CONFIG_DNUMA_BACKLOG
+#define CONFIG_DNUMA_BACKLOG 0
+#endif
+
 #if CONFIG_DNUMA_BACKLOG > 0
 /* Fixed size backlog */
 #include <linux/kfifo.h>
@@ -92,7 +96,7 @@ static void _ml_dbgfs_create_range(struct dentry *base,
 		struct rangemap_entry *rme, char *name)
 {
 	struct dentry *rd;
-	sprintf(name, "%lX-%lX", rme->pfn_start, rme->pfn_end);
+	sprintf(name, "%05lx-%05lx", rme->pfn_start, rme->pfn_end);
 	rd = debugfs_create_file(name, 0400, base,
 				(void *)rme->nid, &range_fops);
 	if (!rd)
@@ -122,7 +126,8 @@ static void ml_dbgfs_create_layout_assume_root(struct memlayout *ml)
 	WARN_ON(!ml->d);
 }
 
-#if defined(CONFIG_DNUMA_DEBUGFS_WRITE)
+# if defined(CONFIG_DNUMA_DEBUGFS_WRITE)
+
 #define DEFINE_DEBUGFS_GET(___type)					\
 	static int debugfs_## ___type ## _get(void *data, u64 *val)	\
 	{								\
@@ -169,7 +174,7 @@ static int dnuma_user_node_watch(u32 old_val, u32 new_val)
 		goto out;
 	}
 
-	if (dnuma_user_start == dnuma_user_end) {
+	if (dnuma_user_start > dnuma_user_end) {
 		ret = -EINVAL;
 		goto out;
 	}
@@ -198,7 +203,7 @@ static int dnuma_user_commit_watch(u8 old_val, u8 new_val)
 
 DEFINE_WATCHED_ATTR(u32, dnuma_user_node);
 DEFINE_WATCHED_ATTR(u8, dnuma_user_commit);
-#endif /* defined(CONFIG_DNUMA_DEBUGFS_WRITE) */
+# endif /* defined(CONFIG_DNUMA_DEBUGFS_WRITE) */
 
 /* create the entire current memlayout.
  * only used for the layout which exsists prior to fs initialization
@@ -246,8 +251,8 @@ e_out:
 	kfree(new_ml);
 }
 
-atomic64_t ml_cache_hits;
-atomic64_t ml_cache_misses;
+static atomic64_t ml_cache_hits;
+static atomic64_t ml_cache_misses;
 
 static inline void ml_stat_cache_miss(void)
 {
@@ -286,7 +291,7 @@ static int ml_dbgfs_create_root(void)
 	debugfs_create_u64("pfn-lookup-cache-hits", 0400, root_dentry,
 			   &ml_cache_hits.counter);
 
-#if defined(CONFIG_DNUMA_DEBUGFS_WRITE)
+# if defined(CONFIG_DNUMA_DEBUGFS_WRITE)
 	/* Set node last: on write, it adds the range. */
 	debugfs_create_x64("start", 0600, root_dentry, &dnuma_user_start);
 	debugfs_create_x64("end",   0600, root_dentry, &dnuma_user_end);
@@ -294,7 +299,7 @@ static int ml_dbgfs_create_root(void)
 			&dnuma_user_node, &dnuma_user_node_fops);
 	debugfs_create_file("commit",  0200, root_dentry,
 			&dnuma_user_commit, &dnuma_user_commit_fops);
-#endif
+# endif
 
 	/* uses root_dentry */
 	ml_dbgfs_create_initial_layout();
@@ -348,16 +353,21 @@ static void __exit ml_dbgfs_exit(void)
 	root_dentry = NULL;
 }
 
-
 module_init(ml_dbgfs_init_root);
 module_exit(ml_dbgfs_exit);
-#else
-#warning "dbgfs disabled fallback functions are not yet defined."
+
+#else /* !defined(CONFIG_DNUMA_DEBUGFS) */
+static inline void ml_dbgfs_init(struct memlayout *ml)
+{}
+static inline void ml_dbgfs_create_range(struct memlayout *ml, struct rangemap_entry *rme)
+{}
+static inline void ml_destroy_dbgfs(struct memlayout *ml)
+{}
+static inline void ml_dbgfs_set_current(struct memlayout *ml)
+{}
 static inline void ml_stat_cache_hit(void)
 {}
 static inline void ml_stat_cache_miss(void)
-{}
-static inline void ml_destroy_dbgfs(__unused struct memlayout *ml)
 {}
 #endif
 
