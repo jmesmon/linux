@@ -65,7 +65,7 @@ static inline int dnuma_page_needs_move(struct page *page)
 	return new_nid;
 }
 
-#if CONFIG_DNUMA_DEBUGFS
+#ifdef CONFIG_DNUMA_DEBUGFS
 static inline void dnuma_update_move_page_stats(void)
 {
 	atomic64_add_unless(&dnuma_moved_page_ct, 1, ~(u64)0);
