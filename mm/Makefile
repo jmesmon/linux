@@ -59,3 +59,4 @@ obj-$(CONFIG_DEBUG_KMEMLEAK_TEST) += kmemleak-test.o
 obj-$(CONFIG_CLEANCACHE) += cleancache.o
 obj-$(CONFIG_MEMORY_ISOLATION) += page_isolation.o
 obj-$(CONFIG_DYNAMIC_NUMA) += dnuma.o memlayout.o
+obj-$(CONFIG_DNUMA_DEBUGFS) += memlayout-debugfs.o

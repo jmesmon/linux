@@ -14,6 +14,8 @@
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
 
+#include "memlayout-debugfs.h"
+
 /* protected by memlayout_lock */
 __rcu struct memlayout *pfn_to_node_map;
 DEFINE_MUTEX(memlayout_lock);
@@ -26,7 +28,7 @@ static void free_rme_tree(struct rb_root *root)
 	}
 }
 
-static void ml_destroy_mem(struct memlayout *ml)
+void memlayout_destroy_mem(struct memlayout *ml)
 {
 	if (!ml)
 		return;
@@ -88,6 +90,8 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
 
 	rb_link_node(&rme->node, parent, new);
 	rb_insert_color(&rme->node, &ml->root);
+
+	ml_dbgfs_create_range(ml, rme);
 	return 0;
 }
 
@@ -114,8 +118,12 @@ struct rangemap_entry *memlayout_pfn_to_rme_higher(struct memlayout *ml, unsigne
 	rme = ACCESS_ONCE(ml->cache);
 	smp_read_barrier_depends();
 
-	if (rme && rme_bounds_pfn(rme, pfn))
+	if (rme && rme_bounds_pfn(rme, pfn)) {
+		ml_stat_cache_hit();
 		return rme;
+	}
+
+	ml_stat_cache_miss();
 
 	node = ml->root.rb_node;
 	while (node) {
@@ -248,7 +256,8 @@ static void memlayout_expand(struct memlayout *ml)
 
 void memlayout_destroy(struct memlayout *ml)
 {
-	ml_destroy_mem(ml);
+	ml_destroy_dbgfs(ml);
+	memlayout_destroy_mem(ml);
 }
 
 struct memlayout *memlayout_create(enum memlayout_type type)
@@ -266,6 +275,7 @@ struct memlayout *memlayout_create(enum memlayout_type type)
 	ml->type = type;
 	ml->cache = NULL;
 
+	ml_dbgfs_init(ml);
 	return ml;
 }
 
@@ -277,11 +287,12 @@ void memlayout_commit(struct memlayout *ml)
 	if (ml->type == ML_INITIAL) {
 		if (WARN(memlayout_exists(),
 				"memlayout marked first is not first, ignoring.\n")) {
-			memlayout_destroy(ml);
+			ml_backlog_feed(ml);
 			return;
 		}
 
 		mutex_lock(&memlayout_lock);
+		ml_dbgfs_set_current(ml);
 		rcu_assign_pointer(pfn_to_node_map, ml);
 		mutex_unlock(&memlayout_lock);
 		return;
@@ -289,6 +300,8 @@ void memlayout_commit(struct memlayout *ml)
 
 	lock_memory_hotplug();
 	mutex_lock(&memlayout_lock);
+
+	ml_dbgfs_set_current(ml);
 
 	old_ml = rcu_dereference_protected(pfn_to_node_map,
 			mutex_is_locked(&memlayout_lock));
@@ -305,7 +318,7 @@ void memlayout_commit(struct memlayout *ml)
 	drain_all_pages();
 	/* All new page allocations now match the memlayout */
 
-	memlayout_destroy(old_ml);
+	ml_backlog_feed(old_ml);
 
 	mutex_unlock(&memlayout_lock);
 	unlock_memory_hotplug();
