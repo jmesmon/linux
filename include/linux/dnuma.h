@@ -64,7 +64,7 @@ static inline int dnuma_page_needs_move(struct page *page)
 	return new_nid;
 }
 
-void dnuma_post_free_to_new_zone(struct page *page, int order);
+void dnuma_post_free_to_new_zone(int order);
 void dnuma_prior_free_to_new_zone(struct page *page, int order,
 				  struct zone *dest_zone,
 				  int dest_nid);
