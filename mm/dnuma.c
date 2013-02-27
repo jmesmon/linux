@@ -11,6 +11,7 @@
 #include <linux/types.h>
 
 #include "internal.h"
+#include "memlayout-debugfs.h"
 
 /* - must be called under lock_memory_hotplug() */
 /* TODO: avoid iterating over all PFNs. */
@@ -119,6 +120,7 @@ static void node_states_set_node(int node, struct memory_notify *arg)
 
 void dnuma_post_free_to_new_zone(struct page *page, int order)
 {
+	ml_stat_count_moved_pages(order);
 }
 
 static void dnuma_prior_return_to_new_zone(struct page *page, int order,

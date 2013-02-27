@@ -56,6 +56,7 @@ struct memlayout {
 };
 
 extern __rcu struct memlayout *pfn_to_node_map;
+extern struct mutex memlayout_lock; /* update-side lock */
 
 /* FIXME: overflow potential in completion check */
 #define ml_for_each_pfn_in_range(rme, pfn)	\
@@ -85,7 +86,13 @@ static inline struct rangemap_entry *rme_first(struct memlayout *ml)
 	     rme = rme_next(rme))
 
 struct memlayout *memlayout_create(enum memlayout_type);
+
+/*
+ * In most cases, these should only be used by the memlayout debugfs code (or
+ * internally within memlayout)
+ */
 void              memlayout_destroy(struct memlayout *ml);
+void              memlayout_destroy_mem(struct memlayout *ml);
 
 /* Callers accesing the same memlayout are assumed to be serialized */
 int memlayout_new_range(struct memlayout *ml,
