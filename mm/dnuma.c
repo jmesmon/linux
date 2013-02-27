@@ -9,6 +9,7 @@
 #include <linux/memory.h>
 
 #include "internal.h"
+#include "memlayout-debugfs.h"
 
 /* Issues due to pageflag_blocks attached to zones with Discontig Mem (&
  * Flatmem??).
@@ -140,6 +141,7 @@ static void node_states_set_node(int node, struct memory_notify *arg)
 void dnuma_post_free_to_new_zone(struct page *page, int order)
 {
 	adjust_zone_present_pages(page_zone(page), (1 << order));
+	ml_stat_count_moved_pages(order);
 }
 
 static void dnuma_prior_return_to_new_zone(struct page *page, int order,
