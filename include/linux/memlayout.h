@@ -56,6 +56,7 @@ struct memlayout {
 };
 
 extern __rcu struct memlayout *pfn_to_node_map;
+extern struct mutex memlayout_lock; /* update-side lock */
 
 /* FIXME: overflow potential in completion check */
 #define ml_for_each_pfn_in_range(rme, pfn)	\
@@ -104,7 +105,12 @@ static inline bool memlayout_exists(void)
 	return !!rcu_access_pointer(pfn_to_node_map);
 }
 
+/*
+ * In most cases, these should only be used by the memlayout debugfs code (or
+ * internally within memlayout)
+ */
 void memlayout_destroy(struct memlayout *ml);
+void memlayout_destroy_mem(struct memlayout *ml);
 
 int memlayout_new_range(struct memlayout *ml,
 		unsigned long pfn_start, unsigned long pfn_end, int nid);
