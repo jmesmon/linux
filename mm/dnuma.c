@@ -11,6 +11,7 @@
 #include <linux/types.h>
 
 #include "internal.h"
+#include "memlayout-debugfs.h"
 
 /*
  * used as the slowpath for
@@ -246,6 +247,7 @@ static void __ref add_free_page_to_node(int dest_nid, struct page *page,
 	/* Add page to new zone */
 	dnuma_add_page_to_new_zone(page, order, dest_zone, dest_nid);
 	return_pages_to_zone(page, order, dest_zone);
+	ml_stat_count_moved_pages(order);
 
 	/* FIXME: there are other states that need fixing up */
 	if (!node_state(dest_nid, N_MEMORY))
