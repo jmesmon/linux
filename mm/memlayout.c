@@ -14,6 +14,8 @@
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
 
+#include "memlayout-debugfs.h"
+
 /* protected by memlayout_lock */
 __rcu struct memlayout *pfn_to_node_map;
 DEFINE_MUTEX(memlayout_lock);
@@ -26,7 +28,7 @@ static void free_rme_tree(struct rb_root *root)
 	}
 }
 
-static void ml_destroy_mem(struct memlayout *ml)
+void memlayout_destroy_mem(struct memlayout *ml)
 {
 	if (!ml)
 		return;
@@ -88,6 +90,8 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
 
 	rb_link_node(&rme->node, parent, new);
 	rb_insert_color(&rme->node, &ml->root);
+
+	ml_dbgfs_create_range(ml, rme);
 	return 0;
 }
 
@@ -104,8 +108,11 @@ int memlayout_pfn_to_nid(unsigned long pfn)
 	rme = ACCESS_ONCE(ml->cache);
 	if (rme && rme_bounds_pfn(rme, pfn)) {
 		rcu_read_unlock();
+		ml_stat_cache_hit();
 		return rme->nid;
 	}
+
+	ml_stat_cache_miss();
 
 	node = ml->root.rb_node;
 	while (node) {
@@ -135,7 +142,8 @@ out:
 
 void memlayout_destroy(struct memlayout *ml)
 {
-	ml_destroy_mem(ml);
+	ml_destroy_dbgfs(ml);
+	memlayout_destroy_mem(ml);
 }
 
 struct memlayout *memlayout_create(enum memlayout_type type)
@@ -153,6 +161,7 @@ struct memlayout *memlayout_create(enum memlayout_type type)
 	ml->type = type;
 	ml->cache = NULL;
 
+	ml_dbgfs_init(ml);
 	return ml;
 }
 
@@ -163,12 +172,12 @@ void memlayout_commit(struct memlayout *ml)
 	if (ml->type == ML_INITIAL) {
 		if (WARN(dnuma_has_memlayout(),
 				"memlayout marked first is not first, ignoring.\n")) {
-			memlayout_destroy(ml);
 			ml_backlog_feed(ml);
 			return;
 		}
 
 		mutex_lock(&memlayout_lock);
+		ml_dbgfs_set_current(ml);
 		rcu_assign_pointer(pfn_to_node_map, ml);
 		mutex_unlock(&memlayout_lock);
 		return;
@@ -179,13 +188,16 @@ void memlayout_commit(struct memlayout *ml)
 	unlock_memory_hotplug();
 
 	mutex_lock(&memlayout_lock);
+
+	ml_dbgfs_set_current(ml);
+
 	old_ml = rcu_dereference_protected(pfn_to_node_map,
 			mutex_is_locked(&memlayout_lock));
 
 	rcu_assign_pointer(pfn_to_node_map, ml);
 
 	synchronize_rcu();
-	memlayout_destroy(old_ml);
+	ml_backlog_feed(old_ml);
 
 	/* Must be called only after the new value for pfn_to_node_map has
 	 * propogated to all tasks, otherwise some pages may lookup the old
