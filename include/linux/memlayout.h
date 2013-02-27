@@ -53,6 +53,7 @@ struct memlayout {
 };
 
 extern __rcu struct memlayout *pfn_to_node_map;
+extern struct mutex memlayout_lock; /* update-side lock */
 
 /* FIXME: overflow potential in completion check */
 #define ml_for_each_pfn_in_range(rme, pfn)	\
