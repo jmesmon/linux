@@ -60,10 +60,14 @@ void dnuma_online_required_nodes_and_zones(struct memlayout *new_ml)
 				 *	- to add zones at the same time
 				 * We can do neither of these things.
 				 *
-				 * FIXME: Right now we just set the things
-				 * needed by the slub handler.
+				 * XXX: - slab uses .status_change_nid
+				 *      - slub uses .status_change_nid_normal
+				 * FIXME: for slub, we may not be placing any
+				 *        "normal" memory in it, can we check for
+				 *        this?
 				 */
 				struct memory_notify arg = {
+					.status_change_nid = nid,
 					.status_change_nid_normal = nid,
 				};
 
