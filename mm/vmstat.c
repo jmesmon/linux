@@ -501,8 +501,7 @@ void drain_zonestat(struct zone *zone, struct per_cpu_pageset *pset)
 
 	for (i = 0; i < NR_VM_ZONE_STAT_ITEMS; i++)
 		if (pset->vm_stat_diff[i]) {
-			int v = pset->vm_stat_diff[i];
-			pset->vm_stat_diff[i] = 0;
+			int v = xchg(&pset->vm_stat_diff[i], 0);
 			atomic_long_add(v, &zone->vm_stat[i]);
 			atomic_long_add(v, &vm_stat[i]);
 		}
