@@ -1055,6 +1055,8 @@ int __mem_online_node(int nid)
 	pg_data_t *pgdat;
 	int ret;
 
+	VM_BUG_ON(nid >= nr_node_ids);
+
 	pgdat = hotadd_new_pgdat(nid, 0);
 	if (!pgdat)
 		return -ENOMEM;
