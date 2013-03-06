@@ -135,7 +135,7 @@ static int dnuma_user_node_watch(u32 old_val, u32 new_val)
 		goto out;
 	}
 
-	if (new_val >= MAX_NUMNODES) {
+	if (new_val >= nr_node_ids) {
 		ret = -EINVAL;
 		goto out;
 	}
