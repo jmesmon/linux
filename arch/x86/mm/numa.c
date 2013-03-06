@@ -503,11 +503,13 @@ static int __init numa_register_memblks(struct numa_meminfo *mi)
 	unsigned long uninitialized_var(pfn_align);
 	int i, nid;
 
+#ifndef CONFIG_DYNAMIC_NUMA
 	/* Account for nodes with cpus and no memory */
 	node_possible_map = numa_nodes_parsed;
 	numa_nodemask_from_meminfo(&node_possible_map, mi);
 	if (WARN_ON(nodes_empty(node_possible_map)))
 		return -EINVAL;
+#endif
 
 	for (i = 0; i < mi->nr_blks; i++) {
 		struct numa_memblk *mb = &mi->blk[i];
@@ -581,8 +583,10 @@ static int __init numa_init(int (*init_func)(void))
 	for (i = 0; i < MAX_LOCAL_APIC; i++)
 		set_apicid_to_node(i, NUMA_NO_NODE);
 
+#ifndef CONFIG_DYNAMIC_NUMA
 	nodes_clear(numa_nodes_parsed);
 	nodes_clear(node_possible_map);
+#endif
 	nodes_clear(node_online_map);
 	memset(&numa_meminfo, 0, sizeof(numa_meminfo));
 	WARN_ON(memblock_set_node(0, ULLONG_MAX, MAX_NUMNODES));
