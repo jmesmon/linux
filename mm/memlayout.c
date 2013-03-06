@@ -74,7 +74,7 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
 
 	if (WARN_ON(nid < 0))
 		return -EINVAL;
-	if (WARN_ON(nid >= MAX_NUMNODES))
+	if (WARN_ON(nid >= nr_node_ids))
 		return -EINVAL;
 
 	if (find_insertion_point(ml, pfn_start, pfn_end, nid, &new, &parent))
