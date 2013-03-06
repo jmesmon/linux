@@ -45,6 +45,9 @@ void dnuma_online_required_nodes_and_zones(struct memlayout *new_ml)
 		if (!node_online(nid)) {
 			pr_info("onlining node %d [start]\n", nid);
 
+			/* Consult hotadd_new_pgdat() */
+			__mem_online_node(nid);
+
 			/* XXX: somewhere in here do a memory online notify: we
 			 * aren't really onlining memory, but some code uses
 			 * memory online notifications to tell if new nodes
@@ -80,12 +83,6 @@ void dnuma_online_required_nodes_and_zones(struct memlayout *new_ml)
 					 */
 					memory_notify(MEM_CANCEL_ONLINE, &arg);
 				}
-			}
-
-			/* Consult hotadd_new_pgdat() */
-			__mem_online_node(nid);
-			if (!node_online(nid)) {
-				pr_alert("node %d not online after onlining\n", nid);
 			}
 
 			pr_info("onlining node %d [complete]\n", nid);
