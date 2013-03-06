@@ -502,11 +502,13 @@ static int __init numa_register_memblks(struct numa_meminfo *mi)
 	unsigned long uninitialized_var(pfn_align);
 	int i, nid;
 
+#ifndef CONFIG_DYNAMIC_NUMA
 	/* Account for nodes with cpus and no memory */
 	node_possible_map = numa_nodes_parsed;
 	numa_nodemask_from_meminfo(&node_possible_map, mi);
 	if (WARN_ON(nodes_empty(node_possible_map)))
 		return -EINVAL;
+#endif
 
 	for (i = 0; i < mi->nr_blks; i++) {
 		struct numa_memblk *mb = &mi->blk[i];
@@ -584,7 +586,9 @@ static int __init numa_init(int (*init_func)(void))
 	 * Do not clear numa_nodes_parsed or zero numa_meminfo here, because
 	 * SRAT was parsed earlier in early_parse_srat().
 	 */
+#ifndef CONFIG_DYNAMIC_NUMA
 	nodes_clear(node_possible_map);
+#endif
 	nodes_clear(node_online_map);
 	WARN_ON(memblock_set_node(0, ULLONG_MAX, MAX_NUMNODES));
 	numa_reset_distance();
