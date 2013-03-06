@@ -9,12 +9,12 @@
 /* Fixed size backlog */
 #include <linux/kfifo.h>
 DEFINE_KFIFO(ml_backlog, struct memlayout *, CONFIG_DNUMA_BACKLOG);
-void ml_backlog_feed(__unused struct memlayout *ml)
+void ml_backlog_feed(struct memlayout *ml)
 {
 	if (kfifo_is_full(&ml_backlog)) {
 		struct memlayout *old_ml;
 		kfifo_get(&ml_backlog, &old_ml);
-		memlayout_destroy(ml);
+		memlayout_destroy(old_ml);
 	}
 
 	kfifo_put(&ml_backlog, &ml);
