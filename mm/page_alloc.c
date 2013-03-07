@@ -4092,6 +4092,21 @@ static int __meminit zone_batchsize(struct zone *zone)
 #endif
 }
 
+/*
+ * Assumes that we are running on the cpu which owns @p, and that local
+ * interrupts are disabled. Alternately, we are within a stop_machine() or it
+ * is inititime, or for some reason we can be certain no other users of @p
+ * exsist.
+ */
+static void pageset_set_batch(struct per_cpu_pageset *p, unsigned long batch)
+{
+	struct per_cpu_pages *pcp = &p->pcp;
+	pcp->high = 6 * batch;
+	/* FIXME: why does this use a different calculation that setup_pagelist_highmark()?
+	 * (moved here from setup_pageset() */
+	pcp->batch = max(1UL, 1 * batch);
+}
+
 static void setup_pageset(struct per_cpu_pageset *p, unsigned long batch)
 {
 	struct per_cpu_pages *pcp;
@@ -4101,8 +4116,7 @@ static void setup_pageset(struct per_cpu_pageset *p, unsigned long batch)
 
 	pcp = &p->pcp;
 	pcp->count = 0;
-	pcp->high = 6 * batch;
-	pcp->batch = max(1UL, 1 * batch);
+	pageset_set_batch(p, batch);
 	for (migratetype = 0; migratetype < MIGRATE_PCPTYPES; migratetype++)
 		INIT_LIST_HEAD(&pcp->lists[migratetype]);
 }
@@ -4119,6 +4133,7 @@ static void setup_pagelist_highmark(struct per_cpu_pageset *p,
 
 	pcp = &p->pcp;
 	pcp->high = high;
+	/* FIXME: why does this use a different calculation that setup_pageset()? */
 	pcp->batch = max(1UL, high/4);
 	if ((high/4) > (PAGE_SHIFT * 8))
 		pcp->batch = PAGE_SHIFT * 8;
