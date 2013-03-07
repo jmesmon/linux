@@ -260,8 +260,11 @@ static int page_outside_zone_boundaries(struct zone *zone, struct page *page)
 	} while (zone_span_seqretry(zone, seq));
 
 	if (ret)
-		pr_err("page %lu outside zone [ %lu - %lu ]\n",
-			pfn, start_pfn, start_pfn + sp);
+		pr_err("page with pfn %05lx outside zone %s with pfn range {%05lx-%05lx} in node %d with pfn range {%05lx-%05lx}\n",
+			pfn, zone->name, start_pfn, start_pfn + sp,
+			zone->zone_pgdat->node_id,
+			zone->zone_pgdat->node_start_pfn,
+			pgdat_end_pfn(zone->zone_pgdat));
 
 	return ret;
 }
