@@ -58,15 +58,16 @@ extern struct mutex memlayout_lock; /* update-side lock */
 /* FIXME: overflow potential in completion check */
 #define ml_for_each_pfn_in_range(rme, pfn)	\
 	for (pfn = rme->pfn_start;		\
-	     pfn <= rme->pfn_end;		\
+	     pfn <= rme->pfn_end || pfn < rme->pfn_start; \
 	     pfn++)
 
-#define ml_for_each_range(ml, rme) \
-	for (rme = rb_entry(rb_first(&ml->root), typeof(*rme), node);	\
-	     &rme->node;						\
-	     rme = rb_entry(rb_next(&rme->node), typeof(*rme), node))
+#define rme_next(rme) rb_entry(rb_next(&(rme)->node), typeof(*(rme)), node)
+#define rme_first(ml) rb_entry(rb_first(&(ml)->root), struct rangemap_entry, node)
 
-#define rme_next(rme) rb_entry(rb_next(&rme->node), typeof(*rme), node)
+#define ml_for_each_range(ml, rme) \
+	for (rme = rme_first(ml);	\
+	     &rme->node;		\
+	     rme = rme_next(rme))
 
 struct memlayout *memlayout_create(enum memlayout_type);
 void              memlayout_destroy(struct memlayout *ml);
@@ -95,6 +96,10 @@ void memlayout_commit(struct memlayout *ml);
  */
 void memlayout_global_init(void);
 
+static inline bool rme_bounds_pfn(struct rangemap_entry *rme, unsigned long pfn)
+{
+	return rme->pfn_start <= pfn && pfn <= rme->pfn_end;
+}
 #else /* ! defined(CONFIG_DYNAMIC_NUMA) */
 
 /* memlayout_new_range() & memlayout_commit() are purposefully omitted */
