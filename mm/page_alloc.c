@@ -6080,32 +6080,30 @@ void free_contig_range(unsigned long pfn, unsigned nr_pages)
 #endif
 
 #ifdef CONFIG_MEMORY_HOTPLUG
-static int __meminit __zone_pcp_update(void *data)
+static void __meminit __zone_pcp_update(void *data)
 {
 	struct zone *zone = data;
-	int cpu;
-	unsigned long batch = zone_batchsize(zone), flags;
-
-	for_each_possible_cpu(cpu) {
-		struct per_cpu_pageset *pset;
-		struct per_cpu_pages *pcp;
-
-		pset = per_cpu_ptr(zone->pageset, cpu);
-		pcp = &pset->pcp;
-
-		local_irq_save(flags);
-		if (pcp->count > 0)
-			free_pcppages_bulk(zone, pcp->count, pcp);
-		drain_zonestat(zone, pset);
-		setup_pageset(pset, batch);
-		local_irq_restore(flags);
-	}
-	return 0;
+	unsigned long batch = zone_batchsize(zone);
+	struct per_cpu_pageset *pset = per_cpu_ptr(zone->pageset, smp_processor_id());
+	pageset_set_batch(pset, batch);
 }
 
+/*
+ * The zone indicated has a new number of managed_pages; batch sizes and percpu
+ * page high values need to be recalulated.
+ *
+ * lock_memory_hotplug() must be held when calling this function. It protects
+ * agains 2 updaters at the same time, with the later updater potentially
+ * outrunning the earlier, resulting in the earlier wiping out a newer
+ * batchsize.
+ */
 void __meminit zone_pcp_update(struct zone *zone)
 {
-	stop_machine(__zone_pcp_update, zone, NULL);
+	/* on_each_cpu() is used to avoid updating pcp->batch & pcp->high while
+	 * they are in use. Potentially could be eliminated (and changed to
+	 * for_each_possible_cpu()) if we aren't too dependent on pcp->batch
+	 * and pcp->high being invariant. */
+	on_each_cpu(__zone_pcp_update, zone, false);
 }
 #endif
 
