@@ -13,28 +13,6 @@
 #include "internal.h"
 #include "memlayout-debugfs.h"
 
-/* Issues due to pageflag_blocks attached to zones with Discontig Mem (&
- * Flatmem??).
- * - Need atomicity over the combination of commiting a new memlayout and
- *   removing the pages from free lists.
- */
-
-/* XXX: "present pages" is guarded by lock_memory_hotplug(), not the spanlock.
- * Need to change all users. */
-void adjust_zone_present_pages(struct zone *zone, long delta)
-{
-	unsigned long flags;
-	pgdat_resize_lock(zone->zone_pgdat, &flags);
-	zone_span_writelock(zone);
-
-	zone->managed_pages += delta;
-	zone->present_pages += delta;
-	zone->zone_pgdat->node_present_pages += delta;
-
-	zone_span_writeunlock(zone);
-	pgdat_resize_unlock(zone->zone_pgdat, &flags);
-}
-
 /* - must be called under lock_memory_hotplug() */
 /* TODO: avoid iterating over all PFNs. */
 void dnuma_online_required_nodes_and_zones(struct memlayout *new_ml)
@@ -142,7 +120,6 @@ static void node_states_set_node(int node, struct memory_notify *arg)
 
 void dnuma_post_free_to_new_zone(struct page *page, int order)
 {
-	adjust_zone_present_pages(page_zone(page), (1 << order));
 	ml_stat_count_moved_pages(order);
 }
 
@@ -172,12 +149,6 @@ void dnuma_prior_free_to_new_zone(struct page *page, int order,
 				  struct zone *dest_zone,
 				  int dest_nid)
 {
-	struct zone *curr_zone = page_zone(page);
-
-	/* XXX: Fiddle with 1st zone's locks */
-	adjust_zone_present_pages(curr_zone, -(1UL << order));
-
-	/* XXX: fiddles with 2nd zone's locks */
 	dnuma_prior_return_to_new_zone(page, order, dest_zone, dest_nid);
 }
 
@@ -187,7 +158,6 @@ static void remove_free_pages_from_zone(struct zone *zone, struct page *page, in
 	/* zone free stats */
 	zone->free_area[order].nr_free--;
 	__mod_zone_page_state(zone, NR_FREE_PAGES, -(1UL << order));
-	adjust_zone_present_pages(zone, -(1UL << order));
 
 	list_del(&page->lru);
 	__ClearPageBuddy(page);
@@ -236,7 +206,7 @@ static void __ref add_free_page_to_node(int dest_nid, struct page *page, int ord
 		build_all_zonelists(NULL, dest_zone);
 		mutex_unlock(&zonelists_mutex);
 	} else
-		zone_pcp_update(dest_zone); /* uses managed_pages to recalculate pcp stuff */
+		zone_pcp_update(dest_zone); /* use managed_pages to recalculate pcp stuff */
 }
 
 static struct rangemap_entry *add_split_pages_to_zones(
