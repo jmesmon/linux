@@ -95,11 +95,6 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
 	return 0;
 }
 
-static inline bool rme_bounds_pfn(struct rangemap_entry *rme, unsigned long pfn)
-{
-	return rme->pfn_start <= pfn && pfn <= rme->pfn_end;
-}
-
 int memlayout_pfn_to_nid(unsigned long pfn)
 {
 	struct rb_node *node;
