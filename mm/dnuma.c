@@ -1,12 +1,14 @@
 #define pr_fmt(fmt) "dnuma: " fmt
 
+#include <linux/atomic.h>
+#include <linux/bootmem.h>
 #include <linux/dnuma.h>
+#include <linux/memory.h>
 #include <linux/mm.h>
 #include <linux/mmzone.h>
+#include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
-#include <linux/atomic.h>
-#include <linux/memory.h>
 
 #include "internal.h"
 #include "memlayout-debugfs.h"
@@ -48,10 +50,9 @@ void dnuma_online_required_nodes_and_zones(struct memlayout *new_ml)
 			/* Consult hotadd_new_pgdat() */
 			__mem_online_node(nid);
 
-			/* XXX: somewhere in here do a memory online notify: we
-			 * aren't really onlining memory, but some code uses
-			 * memory online notifications to tell if new nodes
-			 * have been created.
+			/* XXX: we aren't really onlining memory, but some code
+			 * uses memory online notifications to tell if new
+			 * nodes have been created.
 			 *
 			 * Also note that the notifyers expect to be able to do
 			 * allocations, ie we must allow for might_sleep() */
@@ -235,10 +236,7 @@ static void __ref add_free_page_to_node(int dest_nid, struct page *page, int ord
 		build_all_zonelists(NULL, dest_zone);
 		mutex_unlock(&zonelists_mutex);
 	} else
-		/* FIXME: does stop_machine() after EVERY SINGLE PAGE */
-		/* XXX: this is probably wrong. What does "update" actually
-		 * indicate in zone_pcp terms? */
-		zone_pcp_update(dest_zone);
+		zone_pcp_update(dest_zone); /* uses managed_pages to recalculate pcp stuff */
 }
 
 static struct rangemap_entry *add_split_pages_to_zones(
@@ -247,23 +245,124 @@ static struct rangemap_entry *add_split_pages_to_zones(
 {
 	int i;
 	struct rangemap_entry *rme = first_rme;
+	/*
+	 * We avoid doing any hard work to try to split the pages optimally
+	 * here because the page allocator splits them into 0-order pages
+	 * anyway.
+	 *
+	 * XXX: All of the checks for NULL rmes and the nid conditional are to
+	 * work around memlayouts potentially not covering all valid memory.
+	 */
 	for (i = 0; i < (1 << order); i++) {
 		unsigned long pfn = page_to_pfn(page);
-		while (pfn > rme->pfn_end) {
+		int nid;
+		while (rme && pfn > rme->pfn_end) {
 			rme = rme_next(rme);
 		}
 
-		add_free_page_to_node(rme->nid, page + i, 0);
+		if (rme && pfn >= rme->pfn_start)
+			nid = rme->nid;
+		else
+			nid = page_to_nid(page + i);
+
+		add_free_page_to_node(nid, page + i, 0);
 	}
 
 	return rme;
 }
 
-void dnuma_move_free_pages(struct memlayout *new_ml)
+#define page_count_idx(nid, zone_num) (((nid) * nr_node_ids + (zone_num)) * 2)
+
+/* Because we hold lock_memory_hotplug(), we assume that no else will be
+ * changing present_pages and managed_pages.
+ *
+ * FIXME: For present_pages, this may not be entirely correct.
+ */
+static void update_page_counts(struct memlayout *new_ml)
 {
+	/* update present_pages & managed_pages */
+	/* FIXME: setup zone->managed_pages , zone->present_pages */
+	/* XXX: do ->spanned_pages need to be updated now? */
+
+	/* Need to examine spanned_pages & memlayout, but not duplicate examination. */
+
+	/* Perform a combined iteration of pgdat+zones and memlayout.
+	 * - memlayouts are ordered, their lookup from pfn is slow, and they might have holes over valid pfns.
+	 * - pgdat+zones are unordered, have O(1) lookups, and don't have holes over valid pfns.
+	 */
+	struct rangemap_entry *rme;
+	unsigned long pfn = 0; /* what is the lowest pfn in the system? */
+	unsigned long *counts = kzalloc(2 * nr_node_ids * MAX_NR_ZONES, GFP_KERNEL);
+	if (WARN_ON(!counts))
+		return;
+	rme = rme_first(new_ml);
+	for (pfn = 0; pfn < max_pfn; pfn++) {
+		int nid;
+		struct page *page;
+		size_t idx;
+
+		if (!pfn_valid(pfn))
+			continue;
+
+		page = pfn_to_page(pfn);
+recheck_rme:
+		if (!rme || pfn < rme->pfn_start) {
+			/* We are before the start of the current rme, or we
+			 * are past the last rme, fallback on pgdat+zone+page
+			 * data. */
+			nid = page_to_nid(page);
+		} else if (pfn > rme->pfn_start) {
+			rme = rme_next(rme);
+			goto recheck_rme;
+		} else {
+			nid = rme->nid;
+		}
+
+		idx = page_count_idx(nid, page_zonenum(page));
+		if (!PageReserved(page)) /* XXX: what happens if pages become
+					    reserved/unreserved during this
+					    process? */
+			counts[idx]++; /* managed_pages */
+		counts[idx + 1]++;     /* present_pages */
+	}
+
+	{
+		int nid;
+		size_t idx = 0;
+		for (nid = 0; nid < nr_node_ids; nid++) {
+			unsigned long nid_present = 0;
+			int zone_num;
+			pg_data_t *node = NODE_DATA(nid);
+			if (!node)
+				continue;
+			for (zone_num = 0; zone_num < node->nr_zones; zone_num++) {
+				struct zone *zone = &node->node_zones[zone_num];
+
+				if (zone) {
+					zone->managed_pages = counts[idx];
+					zone->present_pages = counts[idx + 1];
+					nid_present += zone->present_pages;
+				}
+
+				idx += 2;
+			}
+
+			node->node_present_pages = nid_present;
+		}
+	}
+
+	kfree(counts);
+}
+
+void __ref dnuma_move_free_pages(struct memlayout *new_ml)
+{
+	struct rangemap_entry *rme;
+
+	update_page_counts(new_ml);
+	init_per_zone_wmark_min();
+
 	/* FIXME: how does this removal of pages from a zone interact with
 	 * migrate types? ISOLATION? */
-	struct rangemap_entry *rme;
 	ml_for_each_range(new_ml, rme) {
 		unsigned long pfn = rme->pfn_start;
 		int range_nid;
@@ -326,8 +425,8 @@ new_rme:
 				/* this higher order page doesn't fit into the
 				 * current range even though it starts there.
 				 */
-				pr_warn("high-order page from pfn %05lx to %05lx extends beyond end of rme {%05lx - %05lx}:%d\n",
-						first_pfn, last_pfn,
+				pr_warn("order-%02d page (pfn %05lx - %05lx) extends beyond end of rme {%05lx - %05lx}:%d\n",
+						order, first_pfn, last_pfn,
 						rme->pfn_start, rme->pfn_end,
 						rme->nid);
 
