@@ -208,8 +208,9 @@ static inline int script_browse(const char *script_opt __maybe_unused)
 	return 0;
 }
 
-#define K_LEFT -1
-#define K_RIGHT -2
+#define K_LEFT -10
+#define K_RIGHT -20
+#define K_SWITCH_INPUT_DATA -30
 #endif
 
 #ifdef GTK2_SUPPORT
