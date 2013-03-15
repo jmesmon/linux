@@ -61,8 +61,21 @@ extern struct mutex memlayout_lock; /* update-side lock */
 	     pfn <= rme->pfn_end || pfn < rme->pfn_start; \
 	     pfn++)
 
-#define rme_next(rme) rb_entry(rb_next(&(rme)->node), typeof(*(rme)), node)
-#define rme_first(ml) rb_entry(rb_first(&(ml)->root), struct rangemap_entry, node)
+static inline struct rangemap_entry *rme_next(struct rangemap_entry *rme)
+{
+	struct rb_node *node = rb_next(&rme->node);
+	if (!node)
+		return NULL;
+	return rb_entry(node, typeof(*rme), node);
+}
+
+static inline struct rangemap_entry *rme_first(struct memlayout *ml)
+{
+	struct rb_node *node = rb_first(&ml->root);
+	if (!node)
+		return NULL;
+	return rb_entry(node, struct rangemap_entry, node);
+}
 
 #define ml_for_each_range(ml, rme) \
 	for (rme = rme_first(ml);	\
