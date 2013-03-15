@@ -2108,6 +2108,12 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			use hotplug cpu feature to put more cpu back to online.
 			just like you compile the kernel NR_CPUS=n
 
+	extra_nr_node_ids= [NUMA] Increase the maximum number of NUMA nodes
+			above the number detected at boot by the specified
+			percentage (rounded up). For example:
+			extra_nr_node_ids=100 would double the number of
+			node_ids avaliable (up to a max of MAX_NUMNODES).
+
 	nr_uarts=	[SERIAL] maximum number of UARTs to be registered.
 
 	numa_balancing=	[KNL,X86] Enable or disable automatic NUMA balancing.
