@@ -360,6 +360,7 @@ static void __init numa_nodemask_from_meminfo(nodemask_t *nodemask,
 		if (mi->blk[i].start != mi->blk[i].end &&
 		    mi->blk[i].nid != NUMA_NO_NODE)
 			node_set(mi->blk[i].nid, *nodemask);
+
 }
 
 /**
@@ -503,13 +504,11 @@ static int __init numa_register_memblks(struct numa_meminfo *mi)
 	unsigned long uninitialized_var(pfn_align);
 	int i, nid;
 
-#ifndef CONFIG_DYNAMIC_NUMA
 	/* Account for nodes with cpus and no memory */
 	node_possible_map = numa_nodes_parsed;
 	numa_nodemask_from_meminfo(&node_possible_map, mi);
 	if (WARN_ON(nodes_empty(node_possible_map)))
 		return -EINVAL;
-#endif
 
 	for (i = 0; i < mi->nr_blks; i++) {
 		struct numa_memblk *mb = &mi->blk[i];
