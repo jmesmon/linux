@@ -4852,6 +4852,17 @@ void __paginginit free_area_init_node(int nid, unsigned long *zones_size,
 #ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
 
 #if MAX_NUMNODES > 1
+
+static unsigned nr_node_ids_mod_percent;
+static int __init setup_extra_nr_node_ids(char *arg)
+{
+	int r = kstrtouint(arg, 10, &nr_node_ids_mod_percent);
+	if (r)
+		pr_err("invalid param value extra_nr_node_ids=\"%s\"\n", arg);
+	return 0;
+}
+early_param("extra_nr_node_ids", setup_extra_nr_node_ids);
+
 /*
  * Figure out the number of possible node ids.
  */
@@ -4863,6 +4874,19 @@ void __init setup_nr_node_ids(void)
 	for_each_node_mask(node, node_possible_map)
 		highest = node;
 	nr_node_ids = highest + 1;
+
+	/*
+	 * expand nr_node_ids and node_possible_map so more can be onlined
+	 * later
+	 */
+	nr_node_ids +=
+		DIV_ROUND_UP(nr_node_ids * nr_node_ids_mod_percent, 100);
+
+	if (nr_node_ids > MAX_NUMNODES)
+		nr_node_ids = MAX_NUMNODES;
+
+	for (node = highest + 1; node < nr_node_ids; node++)
+		node_set(node, node_possible_map);
 }
 #endif
 
