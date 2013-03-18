@@ -28,7 +28,7 @@ static void free_rme_tree(struct rb_root *root)
 	}
 }
 
-static void ml_destroy_mem(struct memlayout *ml)
+void memlayout_destroy_mem(struct memlayout *ml)
 {
 	if (!ml)
 		return;
@@ -143,7 +143,7 @@ out:
 void memlayout_destroy(struct memlayout *ml)
 {
 	ml_destroy_dbgfs(ml);
-	ml_destroy_mem(ml);
+	memlayout_destroy_mem(ml);
 }
 
 struct memlayout *memlayout_create(enum memlayout_type type)

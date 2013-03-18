@@ -23,8 +23,9 @@ void ml_backlog_feed(struct memlayout *ml)
 /* Unlimited backlog */
 void ml_backlog_feed(struct memlayout *ml)
 {
-	/* TODO: we never use the rme_tree, so we could use ml_destroy_mem() to
-	 * save space. */
+	/* we never use the rme_tree, so we destroy the non-debugfs portions to
+	 * save memory */
+	memlayout_destroy_mem(ml);
 }
 #else /* CONFIG_DNUMA_BACKLOG == 0 */
 /* No backlog */
