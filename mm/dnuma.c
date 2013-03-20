@@ -241,7 +241,10 @@ static struct rangemap_entry *add_split_pages_to_zones(
 	return rme;
 }
 
-#define page_count_idx(nid, zone_num) (((nid) * nr_node_ids + (zone_num)) * 2)
+/*
+ */
+#define _page_count_idx(managed, nid, zone_num) (managed + 2 * (zone_num + MAX_NR_ZONES * (nid * nr_node_ids)))
+#define page_count_idx(nid, zone_num) _page_count_idx(0, nid, zone_num)
 
 /* Because we hold lock_memory_hotplug(), we assume that no else will be
  * changing present_pages and managed_pages.
@@ -262,7 +265,7 @@ static void update_page_counts(struct memlayout *new_ml)
 	 */
 	struct rangemap_entry *rme;
 	unsigned long pfn = 0; /* what is the lowest pfn in the system? */
-	unsigned long *counts = kzalloc(2 * nr_node_ids * MAX_NR_ZONES, GFP_KERNEL);
+	unsigned long *counts = kzalloc(_page_count_idx(2, nr_node_ids, MAX_NR_ZONES), GFP_KERNEL);
 	if (WARN_ON(!counts))
 		return;
 	rme = rme_first(new_ml);
@@ -281,7 +284,9 @@ recheck_rme:
 			 * are past the last rme, fallback on pgdat+zone+page
 			 * data. */
 			nid = page_to_nid(page);
-		} else if (pfn > rme->pfn_start) {
+			pr_info("FALLBACK: pfn %05lx, put in node %d. current rme {%05lx-%05lx}:%d\n",
+					pfn, nid, rme->pfn_start, rme->pfn_end, rme->nid);
+		} else if (pfn > rme->pfn_end) {
 			rme = rme_next(rme);
 			goto recheck_rme;
 		} else {
@@ -289,9 +294,10 @@ recheck_rme:
 		}
 
 		idx = page_count_idx(nid, page_zonenum(page));
-		if (!PageReserved(page)) /* XXX: what happens if pages become
-					    reserved/unreserved during this
-					    process? */
+		/* XXX: what happens if pages become
+		   reserved/unreserved during this
+		   process? */
+		if (!PageReserved(page))
 			counts[idx]++; /* managed_pages */
 		counts[idx + 1]++;     /* present_pages */
 	}
@@ -308,15 +314,14 @@ recheck_rme:
 			for (zone_num = 0; zone_num < node->nr_zones; zone_num++) {
 				struct zone *zone = &node->node_zones[zone_num];
 
-				if (zone) {
-					zone->managed_pages = counts[idx];
-					zone->present_pages = counts[idx + 1];
-					nid_present += zone->present_pages;
-				}
-
+				zone->managed_pages = counts[idx];
+				zone->present_pages = counts[idx + 1];
+				nid_present += zone->present_pages;
 				idx += 2;
 			}
 
+			pr_info(" *** node %d , present_pages %lu to %lu\n",
+					node->node_id, node->node_present_pages, nid_present);
 			node->node_present_pages = nid_present;
 		}
 	}
