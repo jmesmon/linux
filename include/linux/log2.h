@@ -14,12 +14,16 @@
 
 #include <linux/types.h>
 #include <linux/bitops.h>
+#include <linux/compiler.h>
 
 /*
  * deal with unrepresentable constant logarithms
  */
-extern __attribute__((const, noreturn))
-int ____ilog2_NaN(void);
+static inline __attribute__((const, noreturn))
+int ____ilog2_NaN(void)
+{
+	unreachable();
+}
 
 /*
  * non-constant log of base 2 calculators
