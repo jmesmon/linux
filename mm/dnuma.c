@@ -243,29 +243,23 @@ static struct rangemap_entry *add_split_pages_to_zones(
 
 /*
  */
-#define _page_count_idx(managed, nid, zone_num) (managed + 2 * (zone_num + MAX_NR_ZONES * (nid * nr_node_ids)))
+#define _page_count_idx(managed, nid, zone_num) (managed + 2 * (zone_num + MAX_NR_ZONES * (nid)))
 #define page_count_idx(nid, zone_num) _page_count_idx(0, nid, zone_num)
 
 /* Because we hold lock_memory_hotplug(), we assume that no else will be
  * changing present_pages and managed_pages.
- *
- * FIXME: For present_pages, this may not be entirely correct.
  */
 static void update_page_counts(struct memlayout *new_ml)
 {
-	/* update present_pages & managed_pages */
-	/* FIXME: setup zone->managed_pages , zone->present_pages */
-	/* XXX: do ->spanned_pages need to be updated now? */
-
-	/* Need to examine spanned_pages & memlayout, but not duplicate examination. */
-
 	/* Perform a combined iteration of pgdat+zones and memlayout.
-	 * - memlayouts are ordered, their lookup from pfn is slow, and they might have holes over valid pfns.
-	 * - pgdat+zones are unordered, have O(1) lookups, and don't have holes over valid pfns.
+	 * - memlayouts are ordered, their lookup from pfn is slow, and they
+	 *   might have holes over valid pfns.
+	 * - pgdat+zones are unordered, have O(1) lookups, and don't have holes
+	 *   over valid pfns.
 	 */
 	struct rangemap_entry *rme;
-	unsigned long pfn = 0; /* what is the lowest pfn in the system? */
-	unsigned long *counts = kzalloc(_page_count_idx(2, nr_node_ids, MAX_NR_ZONES), GFP_KERNEL);
+	unsigned long pfn = 0;
+	unsigned long *counts = kzalloc(2 * nr_node_ids * MAX_NR_ZONES * sizeof(*counts), GFP_KERNEL);
 	if (WARN_ON(!counts))
 		return;
 	rme = rme_first(new_ml);
@@ -284,8 +278,8 @@ recheck_rme:
 			 * are past the last rme, fallback on pgdat+zone+page
 			 * data. */
 			nid = page_to_nid(page);
-			pr_info("FALLBACK: pfn %05lx, put in node %d. current rme {%05lx-%05lx}:%d\n",
-					pfn, nid, rme->pfn_start, rme->pfn_end, rme->nid);
+			pr_debug("FALLBACK: pfn %05lx, put in node %d. current rme "RME_FMT"\n",
+					pfn, nid, RME_EXP(rme));
 		} else if (pfn > rme->pfn_end) {
 			rme = rme_next(rme);
 			goto recheck_rme;
@@ -304,7 +298,6 @@ recheck_rme:
 
 	{
 		int nid;
-		size_t idx = 0;
 		for (nid = 0; nid < nr_node_ids; nid++) {
 			unsigned long nid_present = 0;
 			int zone_num;
@@ -313,14 +306,17 @@ recheck_rme:
 				continue;
 			for (zone_num = 0; zone_num < node->nr_zones; zone_num++) {
 				struct zone *zone = &node->node_zones[zone_num];
-
+				size_t idx = page_count_idx(nid, zone_num);
+				pr_debug("nid %d zone %d mp=%lu pp=%lu -> mp=%lu pp=%lu\n",
+						nid, zone_num,
+						zone->managed_pages, zone->present_pages,
+						counts[idx], counts[idx+1]);
 				zone->managed_pages = counts[idx];
 				zone->present_pages = counts[idx + 1];
 				nid_present += zone->present_pages;
-				idx += 2;
 			}
 
-			pr_info(" *** node %d , present_pages %lu to %lu\n",
+			pr_debug(" node %d zone * present_pages %lu to %lu\n",
 					node->node_id, node->node_present_pages, nid_present);
 			node->node_present_pages = nid_present;
 		}
@@ -397,13 +393,13 @@ new_rme:
 			}
 
 			if (last_pfn > rme->pfn_end) {
-				/* this higher order page doesn't fit into the
+				/*
+				 * this higher order page doesn't fit into the
 				 * current range even though it starts there.
 				 */
-				pr_warn("order-%02d page (pfn %05lx - %05lx) extends beyond end of rme {%05lx - %05lx}:%d\n",
+				pr_warn("order-%02d page (pfn %05lx-%05lx) extends beyond end of rme "RME_FMT"\n",
 						order, first_pfn, last_pfn,
-						rme->pfn_start, rme->pfn_end,
-						rme->nid);
+						RME_EXP(rme));
 
 				remove_free_pages_from_zone(zone, page, order);
 				spin_unlock_irqrestore(&zone->lock, flags);
