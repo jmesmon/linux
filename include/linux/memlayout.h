@@ -14,7 +14,7 @@
 
 enum memlayout_type {
 	ML_INITIAL,
-	ML_DNUMA,
+	ML_USER_DEBUG,
 	ML_NUM_TYPES
 };
 
@@ -31,6 +31,9 @@ struct rangemap_entry {
 	unsigned long pfn_end;
 	int nid;
 };
+
+#define RME_FMT "{%05lx-%05lx}:%d"
+#define RME_EXP(rme) rme->pfn_start, rme->pfn_end, rme->nid
 
 struct memlayout {
 	struct rb_root root;
