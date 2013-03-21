@@ -129,7 +129,7 @@ static int dnuma_user_node_watch(u32 old_val, u32 new_val)
 	int ret = 0;
 	mutex_lock(&dnuma_user_lock);
 	if (!user_ml)
-		user_ml = memlayout_create(ML_DNUMA);
+		user_ml = memlayout_create(ML_USER_DEBUG);
 
 	if (WARN_ON(!user_ml)) {
 		ret = -ENOMEM;
