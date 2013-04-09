@@ -4007,11 +4007,26 @@ static int __meminit zone_batchsize(struct zone *zone)
 #endif
 }
 
+static void pageset_update_prep(struct per_cpu_pages *pcp)
+{
+	/*
+	 * We're about to mess with PCP in an non atomic fashion.  Put an
+	 * intermediate safe value of batch and make sure it is visible before
+	 * any other change
+	 */
+	pcp->batch = 1;
+	smp_wmb();
+}
+
 /* a companion to setup_pagelist_highmark() */
 static void pageset_set_batch(struct per_cpu_pageset *p, unsigned long batch)
 {
 	struct per_cpu_pages *pcp = &p->pcp;
+	pageset_update_prep(pcp);
+
 	pcp->high = 6 * batch;
+	smp_wmb();
+
 	pcp->batch = max(1UL, 1 * batch);
 }
 
@@ -4039,7 +4054,11 @@ static void setup_pagelist_highmark(struct per_cpu_pageset *p,
 	struct per_cpu_pages *pcp;
 
 	pcp = &p->pcp;
+	pageset_update_prep(pcp);
+
 	pcp->high = high;
+	smp_wmb();
+
 	pcp->batch = max(1UL, high/4);
 	if ((high/4) > (PAGE_SHIFT * 8))
 		pcp->batch = PAGE_SHIFT * 8;
