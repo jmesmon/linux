@@ -636,7 +636,7 @@ static int add_memory_section(int nid, struct mem_section *section,
 	if (!ret) {
 		if (context == HOTPLUG &&
 		    mem->section_count == sections_per_block)
-			ret = register_mem_sect_under_node(mem, nid);
+			ret = register_mem_block_under_node(mem, nid);
 	}
 
 	mutex_unlock(&mem_sysfs_mutex);
@@ -650,7 +650,7 @@ int remove_memory_block(unsigned long node_id, struct mem_section *section,
 
 	mutex_lock(&mem_sysfs_mutex);
 	mem = find_memory_block(section);
-	unregister_mem_sect_under_nodes(mem, __section_nr(section));
+	unregister_mem_block_under_nodes(mem, __section_nr(section));
 
 	mem->section_count--;
 	if (mem->section_count == 0) {
