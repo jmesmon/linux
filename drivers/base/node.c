@@ -388,8 +388,8 @@ static int get_nid_for_pfn(unsigned long pfn)
 	return pfn_to_nid(pfn);
 }
 
-/* register memory section under specified node if it spans that node */
-int register_mem_sect_under_node(struct memory_block *mem_blk, int nid)
+/* register memory block under specified node if it spans that node */
+int register_mem_block_under_node(struct memory_block *mem_blk, int nid)
 {
 	int ret;
 	unsigned long pfn, sect_start_pfn, sect_end_pfn;
@@ -424,8 +424,8 @@ int register_mem_sect_under_node(struct memory_block *mem_blk, int nid)
 	return 0;
 }
 
-/* unregister memory section under all nodes that it spans */
-int unregister_mem_sect_under_nodes(struct memory_block *mem_blk,
+/* unregister memory block under all nodes that it spans */
+int unregister_mem_block_under_nodes(struct memory_block *mem_blk,
 				    unsigned long phys_index)
 {
 	NODEMASK_ALLOC(nodemask_t, unlinked_nodes, GFP_KERNEL);
@@ -485,7 +485,7 @@ static int link_mem_sections(int nid)
 
 		mem_blk = find_memory_block_hinted(mem_sect, mem_blk);
 
-		ret = register_mem_sect_under_node(mem_blk, nid);
+		ret = register_mem_block_under_node(mem_blk, nid);
 		if (!err)
 			err = ret;
 
