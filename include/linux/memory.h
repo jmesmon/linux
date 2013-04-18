@@ -136,6 +136,11 @@ enum mem_add_context { BOOT, HOTPLUG };
 #define hotplug_memory_notifier(fn, pri) do { } while (0)
 #endif
 
+#ifdef CONFIG_DYNAMIC_NUMA
+struct memlayout;
+extern int refresh_memory_blocks(struct memlayout *ml);
+#endif
+
 /*
  * 'struct memory_accessor' is a generic interface to provide
  * in-kernel access to persistent memory such as i2c or SPI EEPROMs
