@@ -15,6 +15,7 @@
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/kobject.h>
+#include <linux/memlayout.h>
 #include <linux/memory.h>
 #include <linux/memory_hotplug.h>
 #include <linux/mm.h>
@@ -699,6 +700,49 @@ bool is_memblock_offlined(struct memory_block *mem)
 {
 	return mem->state == MEM_OFFLINE;
 }
+
+#ifdef CONFIG_DYNAMIC_NUMA
+int refresh_memory_blocks(struct memlayout *ml)
+{
+	struct subsys_dev_iter iter;
+	struct device *dev;
+
+	mutex_lock(&mem_sysfs_mutex);
+	subsys_dev_iter_init(&iter, &memory_subsys, NULL, NULL);
+
+	while ((dev = subsys_dev_iter_next(&iter))) {
+		unsigned long start_pfn, end_pfn, pfn;
+		struct rangemap_entry *rme;
+		struct memory_block *mem_blk = container_of(dev,
+						struct memory_block, dev);
+
+		pfn = start_pfn = section_nr_to_pfn(mem_blk->start_section_nr);
+		end_pfn = section_nr_to_pfn(mem_blk->end_section_nr + 1);
+		rme = memlayout_pfn_to_rme_higher(ml, start_pfn);
+
+
+		if (!rme || !rme_bounds_pfn(rme, pfn)) {
+			pr_warn("memory block %s {sec %lx-%lx}, {pfn %05lx-%05lx} is not bounded by the memlayout %pK\n",
+					dev_name(dev),
+					mem_blk->start_section_nr,
+					mem_blk->end_section_nr,
+					start_pfn, end_pfn, ml);
+			continue;
+		}
+
+		unregister_mem_block_under_nodes(mem_blk);
+
+		for (; pfn < end_pfn && rme; rme = rme_next(rme)) {
+			register_mem_block_under_node(mem_blk, rme->nid);
+			pfn = rme->pfn_end + 1;
+		}
+	}
+
+	subsys_dev_iter_exit(&iter);
+	mutex_unlock(&mem_sysfs_mutex);
+	return 0;
+}
+#endif
 
 /*
  * Initialize the sysfs support for memory devices...
