@@ -700,6 +700,27 @@ bool is_memblock_offlined(struct memory_block *mem)
 	return mem->state == MEM_OFFLINE;
 }
 
+#if defined(CONFIG_DYNAMIC_NUMA) && 0
+int refresh_memory_blocks(struct memlayout *ml)
+{
+	struct subsys_dev_iter iter;
+	struct device *dev;
+	/* FIXME: 4th arg is (struct device_type *), can we spec one? */
+	subsys_dev_iter_init(&iter, &memory_subsys, NULL, NULL);
+
+	while ((dev = subsys_dev_iter_next(&iter))) {
+		struct memory_block *mem_blk = container_of(dev, struct memory_block, dev);
+		/* TODO: do something */
+		mutex_lock(&mem_sysfs_mutex);
+		ret = register_mem_block_under_node(mem, nid);
+		unregister_mem_block_under_nodes(mem, __section_nr(section));
+		mutex_unlock(&mem_sysfs_mutex);
+	}
+
+	subsys_dev_iter_exit(&iter);
+}
+#endif
+
 /*
  * Initialize the sysfs support for memory devices...
  */
