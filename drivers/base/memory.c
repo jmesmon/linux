@@ -10,20 +10,20 @@
  * SPARSEMEM should be contained here, or in mm/memory_hotplug.c.
  */
 
-#include <linux/module.h>
-#include <linux/init.h>
-#include <linux/topology.h>
+#include <linux/atomic.h>
 #include <linux/capability.h>
 #include <linux/device.h>
-#include <linux/memory.h>
+#include <linux/init.h>
 #include <linux/kobject.h>
+#include <linux/memory.h>
 #include <linux/memory_hotplug.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/mutex.h>
-#include <linux/stat.h>
 #include <linux/slab.h>
+#include <linux/stat.h>
+#include <linux/topology.h>
 
-#include <linux/atomic.h>
 #include <asm/uaccess.h>
 
 static DEFINE_MUTEX(mem_sysfs_mutex);
