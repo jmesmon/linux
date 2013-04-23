@@ -77,32 +77,6 @@ static void memory_block_release(struct device *dev)
 	kfree(mem);
 }
 
-/*
- * register_memory - Setup a sysfs device for a memory block
- */
-static
-int register_memory(struct memory_block *memory)
-{
-	int error;
-
-	memory->dev.bus = &memory_subsys;
-	memory->dev.id = memory->start_section_nr / sections_per_block;
-	memory->dev.release = memory_block_release;
-
-	error = device_register(&memory->dev);
-	return error;
-}
-
-static void
-unregister_memory(struct memory_block *memory)
-{
-	BUG_ON(memory->dev.bus != &memory_subsys);
-
-	/* drop the ref. we got in remove_memory_block() */
-	kobject_put(&memory->dev.kobj);
-	device_unregister(&memory->dev);
-}
-
 unsigned long __weak memory_block_size_bytes(void)
 {
 	return MIN_MEMORY_BLOCK_SIZE;
@@ -388,6 +362,49 @@ static DEVICE_ATTR(removable, 0444, show_mem_removable, NULL);
 	device_remove_file(&mem->dev, &dev_attr_##attr_name)
 
 /*
+ * register_memory - Setup a sysfs device for a memory block
+ */
+static
+int register_memory(struct memory_block *memory)
+{
+	int error;
+
+	memory->dev.bus = &memory_subsys;
+	memory->dev.id = memory->start_section_nr / sections_per_block;
+	memory->dev.release = memory_block_release;
+
+	error = device_register(&memory->dev);
+	if (!error)
+		error = mem_create_simple_file(memory, phys_index);
+	if (!error)
+		error = mem_create_simple_file(memory, end_phys_index);
+	if (!error)
+		error = mem_create_simple_file(memory, state);
+	if (!error)
+		error = mem_create_simple_file(memory, phys_device);
+	if (!error)
+		error = mem_create_simple_file(memory, removable);
+
+	return error;
+}
+
+static void
+unregister_memory(struct memory_block *memory)
+{
+	BUG_ON(memory->dev.bus != &memory_subsys);
+
+	mem_remove_simple_file(memory, phys_index);
+	mem_remove_simple_file(memory, end_phys_index);
+	mem_remove_simple_file(memory, state);
+	mem_remove_simple_file(memory, phys_device);
+	mem_remove_simple_file(memory, removable);
+
+	/* drop the ref. we got in remove_memory_block() */
+	kobject_put(&memory->dev.kobj);
+	device_unregister(&memory->dev);
+}
+
+/*
  * Block size attribute stuff
  */
 static ssize_t
@@ -580,17 +597,6 @@ static int init_memory_block(struct memory_block **memory,
 	mem->phys_device = arch_get_memory_phys_device(start_pfn);
 
 	ret = register_memory(mem);
-	if (!ret)
-		ret = mem_create_simple_file(mem, phys_index);
-	if (!ret)
-		ret = mem_create_simple_file(mem, end_phys_index);
-	if (!ret)
-		ret = mem_create_simple_file(mem, state);
-	if (!ret)
-		ret = mem_create_simple_file(mem, phys_device);
-	if (!ret)
-		ret = mem_create_simple_file(mem, removable);
-
 	*memory = mem;
 	return ret;
 }
@@ -648,11 +654,6 @@ int remove_memory_block(unsigned long node_id, struct mem_section *section,
 
 	mem->section_count--;
 	if (mem->section_count == 0) {
-		mem_remove_simple_file(mem, phys_index);
-		mem_remove_simple_file(mem, end_phys_index);
-		mem_remove_simple_file(mem, state);
-		mem_remove_simple_file(mem, phys_device);
-		mem_remove_simple_file(mem, removable);
 		unregister_memory(mem);
 	} else
 		kobject_put(&mem->dev.kobj);
