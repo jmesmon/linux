@@ -424,9 +424,11 @@ int register_mem_block_under_node(struct memory_block *mem_blk, int nid)
 	return 0;
 }
 
-/* unregister memory block under all nodes that it spans */
-int unregister_mem_block_under_nodes(struct memory_block *mem_blk,
-				    unsigned long phys_index)
+/*
+ * Unregister @mem_blk from under all nodes containing @section_nr.
+ */
+int unregister_mem_block_section_under_nodes(struct memory_block *mem_blk,
+				    unsigned long section_nr)
 {
 	NODEMASK_ALLOC(nodemask_t, unlinked_nodes, GFP_KERNEL);
 	unsigned long pfn, sect_start_pfn, sect_end_pfn;
@@ -439,7 +441,7 @@ int unregister_mem_block_under_nodes(struct memory_block *mem_blk,
 		return -ENOMEM;
 	nodes_clear(*unlinked_nodes);
 
-	sect_start_pfn = section_nr_to_pfn(phys_index);
+	sect_start_pfn = section_nr_to_pfn(section_nr);
 	sect_end_pfn = sect_start_pfn + PAGES_PER_SECTION - 1;
 	for (pfn = sect_start_pfn; pfn <= sect_end_pfn; pfn++) {
 		int nid;
