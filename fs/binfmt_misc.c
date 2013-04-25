@@ -197,6 +197,11 @@ static int load_misc_binary(struct linux_binprm *bprm)
 		goto _error;
 
 	retval = search_binary_handler(bprm);
+	if (retval == -ELOOP) {
+		pr_err("binfmt misc %s is involved in a loop, disabling.\n",
+				fmt->name);
+		clear_bit(Enabled, &fmt->flags);
+	}
 	if (retval < 0)
 		goto _error;
 
