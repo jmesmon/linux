@@ -178,6 +178,15 @@ int memlayout_pfn_to_nid(unsigned long pfn)
 	return nid;
 }
 
+/*
+ * - all nids are < nr_node_ids
+ *   - handled by mod(%)ing by nr_node_ids
+ *   - in the future: merge nodes which have a low node distance, or favor
+ *     closer nodes for merging (while attempting to spread merged nodes over
+ *     avaliable node ids)
+ * - don't leave gaps in nid numbering.
+ */
+
 /* given a new memory layout that is not yet in use by the system,
  * modify it so that
  * - all pfns are included
