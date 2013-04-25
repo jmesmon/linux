@@ -424,6 +424,24 @@ int register_mem_block_under_node(struct memory_block *mem_blk, int nid)
 	return 0;
 }
 
+static void unregister_mem_block_pfn_under_nodes(struct memory_block *mem_blk,
+		unsigned long pfn, nodemask_t *unlinked_nodes)
+{
+	int nid;
+
+	nid = get_nid_for_pfn(pfn);
+	if (nid < 0)
+		return;
+	if (!node_online(nid))
+		return;
+	if (node_test_and_set(nid, *unlinked_nodes))
+		return;
+	sysfs_remove_link(&node_devices[nid]->dev.kobj,
+			kobject_name(&mem_blk->dev.kobj));
+	sysfs_remove_link(&mem_blk->dev.kobj,
+			kobject_name(&node_devices[nid]->dev.kobj));
+}
+
 /*
  * Unregister @mem_blk from under all nodes containing @section_nr.
  */
@@ -443,20 +461,29 @@ int unregister_mem_block_section_under_nodes(struct memory_block *mem_blk,
 
 	sect_start_pfn = section_nr_to_pfn(section_nr);
 	sect_end_pfn = sect_start_pfn + PAGES_PER_SECTION - 1;
-	for (pfn = sect_start_pfn; pfn <= sect_end_pfn; pfn++) {
-		int nid;
+	for (pfn = sect_start_pfn; pfn <= sect_end_pfn; pfn++)
+		unregister_mem_block_pfn_under_nodes(mem_blk, pfn,
+				unlinked_nodes);
+	NODEMASK_FREE(unlinked_nodes);
+	return 0;
+}
 
-		nid = get_nid_for_pfn(pfn);
-		if (nid < 0)
-			continue;
-		if (!node_online(nid))
-			continue;
-		if (node_test_and_set(nid, *unlinked_nodes))
-			continue;
-		sysfs_remove_link(&node_devices[nid]->dev.kobj,
-			 kobject_name(&mem_blk->dev.kobj));
-		sysfs_remove_link(&mem_blk->dev.kobj,
-			 kobject_name(&node_devices[nid]->dev.kobj));
+int unregister_mem_block_under_nodes(struct memory_block *mem_blk)
+{
+	NODEMASK_ALLOC(nodemask_t, unlinked_nodes, GFP_KERNEL);
+	unsigned long pfn, sect_start_pfn, sect_end_pfn, sec_num;
+
+	if (!unlinked_nodes)
+		return -ENOMEM;
+	nodes_clear(*unlinked_nodes);
+
+	for (sec_num = mem_blk->start_section_nr;
+			sec_num < mem_blk->end_section_nr; sec_num++) {
+		sect_start_pfn = section_nr_to_pfn(sec_num);
+		sect_end_pfn = sect_start_pfn + PAGES_PER_SECTION - 1;
+		for (pfn = sect_start_pfn; pfn <= sect_end_pfn; pfn++)
+			unregister_mem_block_pfn_under_nodes(mem_blk, pfn,
+					unlinked_nodes);
 	}
 	NODEMASK_FREE(unlinked_nodes);
 	return 0;
