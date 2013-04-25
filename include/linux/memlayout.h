@@ -95,6 +95,7 @@ void memlayout_destroy(struct memlayout *ml);
 int memlayout_new_range(struct memlayout *ml,
 		unsigned long pfn_start, unsigned long pfn_end, int nid);
 int memlayout_pfn_to_nid(unsigned long pfn);
+struct rangemap_entry *memlayout_pfn_to_rme_higher(unsigned long pfn);
 
 /*
  * Put ranges added by memlayout_new_range() into use by
