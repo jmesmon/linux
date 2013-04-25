@@ -91,21 +91,31 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
 	return 0;
 }
 
-int memlayout_pfn_to_nid(unsigned long pfn)
+/*
+ * rcu_read_lock() must be held when called and while the returned
+ * rangemap_entry is used.
+ *
+ * Returns the RME that contains the given PFN,
+ * OR if there is no RME that contains the given PFN, it returns the next one (containing a higher pfn),
+ * OR if there is no next RME, it returns NULL.
+ *
+ * This is designed for use in iterating over a subset of the rme's, starting
+ * at @pfn passed to this function.
+ */
+struct rangemap_entry *memlayout_pfn_to_rme_higher(unsigned long pfn)
 {
-	struct rb_node *node;
+	struct rb_node *node, *prev_node = NULL;
 	struct memlayout *ml;
 	struct rangemap_entry *rme;
-	rcu_read_lock();
 	ml = rcu_dereference(pfn_to_node_map);
 	if (!ml || (ml->type == ML_INITIAL))
-		goto out;
+		return NULL;
 
 	rme = ACCESS_ONCE(ml->cache);
-	if (rme && rme_bounds_pfn(rme, pfn)) {
-		rcu_read_unlock();
-		return rme->nid;
-	}
+	smp_read_barrier_depends();
+
+	if (rme && rme_bounds_pfn(rme, pfn))
+		return rme;
 
 	node = ml->root.rb_node;
 	while (node) {
@@ -113,24 +123,50 @@ int memlayout_pfn_to_nid(unsigned long pfn)
 		bool greater_than_start = rme->pfn_start <= pfn;
 		bool less_than_end = pfn <= rme->pfn_end;
 
-		if (greater_than_start && !less_than_end)
+		if (greater_than_start && !less_than_end) {
+			prev_node = node;
 			node = node->rb_right;
-		else if (less_than_end && !greater_than_start)
+		} else if (less_than_end && !greater_than_start) {
+			prev_node = node;
 			node = node->rb_left;
-		else {
-			/* greater_than_start && less_than_end.
-			 *  the case (!greater_than_start  && !less_than_end)
-			 *  is impossible */
-			int nid = rme->nid;
+		} else {
+			/* only can occur if a range ends before it starts */
+			if (WARN_ON(!greater_than_start && !less_than_end))
+				return NULL;
+
+			/* greater_than_start && less_than_end. */
 			ACCESS_ONCE(ml->cache) = rme;
-			rcu_read_unlock();
-			return nid;
+			return rme;
 		}
 	}
+	if (prev_node) {
+		struct rangemap_entry *rme = rb_entry(prev_node, typeof(*rme), node);
+		if (pfn < rme->pfn_start)
+			return rme;
+		else
+			return rme_next(rme);
+	}
+	return NULL;
+}
 
-out:
+int memlayout_pfn_to_nid(unsigned long pfn)
+{
+	struct rangemap_entry *rme;
+	int nid;
+	rcu_read_lock();
+	rme = memlayout_pfn_to_rme_higher(pfn);
+
+	/*
+	 * by using a modified version of memlayout_pfn_to_rme_higher(), the
+	 * rme_bounds_pfn() check could be skipped. Unfortunately, it would also
+	 * result in a large amount of copy-pasted code (or a nasty inline func)
+	 */
+	if (!rme || !rme_bounds_pfn(rme, pfn))
+		nid = NUMA_NO_NODE;
+	else
+		nid = rme->nid;
 	rcu_read_unlock();
-	return NUMA_NO_NODE;
+	return nid;
 }
 
 /* given a new memory layout that is not yet in use by the system,
