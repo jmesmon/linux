@@ -650,7 +650,7 @@ int remove_memory_block(unsigned long node_id, struct mem_section *section,
 
 	mutex_lock(&mem_sysfs_mutex);
 	mem = find_memory_block(section);
-	unregister_mem_block_under_nodes(mem, __section_nr(section));
+	unregister_mem_block_section_under_nodes(mem, __section_nr(section));
 
 	mem->section_count--;
 	if (mem->section_count == 0) {
