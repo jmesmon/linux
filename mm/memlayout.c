@@ -97,8 +97,10 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
 }
 
 /*
+ * If @ml is the pfn_to_node_map, it must have been dereferenced and
  * rcu_read_lock() must be held when called and while the returned
- * rangemap_entry is used.
+ * rangemap_entry is used. Alternately, the update_lock can be held and
+ * rcu_dereference_protected() used for operations that need to block.
  *
  * Returns the RME that contains the given PFN,
  * OR if there is no RME that contains the given PFN, it returns the next one (containing a higher pfn),
@@ -107,12 +109,10 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
  * This is designed for use in iterating over a subset of the rme's, starting
  * at @pfn passed to this function.
  */
-struct rangemap_entry *memlayout_pfn_to_rme_higher(unsigned long pfn)
+struct rangemap_entry *memlayout_pfn_to_rme_higher(struct memlayout *ml, unsigned long pfn)
 {
 	struct rb_node *node, *prev_node = NULL;
-	struct memlayout *ml;
 	struct rangemap_entry *rme;
-	ml = rcu_dereference(pfn_to_node_map);
 	if (!ml || (ml->type == ML_INITIAL))
 		return NULL;
 
@@ -163,7 +163,7 @@ int memlayout_pfn_to_nid(unsigned long pfn)
 	struct rangemap_entry *rme;
 	int nid;
 	rcu_read_lock();
-	rme = memlayout_pfn_to_rme_higher(pfn);
+	rme = memlayout_pfn_to_rme_higher(rcu_dereference(pfn_to_node_map), pfn);
 
 	/*
 	 * by using a modified version of memlayout_pfn_to_rme_higher(), the
@@ -259,6 +259,8 @@ void memlayout_commit(struct memlayout *ml)
 
 	lock_memory_hotplug();
 	dnuma_online_required_nodes_and_zones(ml);
+	/* this unlock is only allowed if nothing will offline nodes (or zones)
+	 * */
 	unlock_memory_hotplug();
 
 	mutex_lock(&memlayout_lock);
@@ -281,7 +283,7 @@ void memlayout_commit(struct memlayout *ml)
 
 	/* Do this after the free path is set up so that pages are free'd into
 	 * their "new" zones so that after this completes, no free pages in the
-	 * wrong zone remain. */
+	 * wrong zone remain (except for those in the pcp lists) */
 	dnuma_move_free_pages(ml);
 
 	/* All new _non pcp_ page allocations now match the memlayout*/
