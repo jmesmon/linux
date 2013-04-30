@@ -642,6 +642,12 @@ unregister_memory(struct memory_block *memory)
 {
 	BUG_ON(memory->dev.bus != &memory_subsys);
 
+	mem_remove_simple_file(mem, phys_index);
+	mem_remove_simple_file(mem, end_phys_index);
+	mem_remove_simple_file(mem, state);
+	mem_remove_simple_file(mem, phys_device);
+	mem_remove_simple_file(mem, removable);
+
 	/* drop the ref. we got in remove_memory_block() */
 	kobject_put(&memory->dev.kobj);
 	device_unregister(&memory->dev);
@@ -657,14 +663,9 @@ static int remove_memory_block(unsigned long node_id,
 	unregister_mem_sect_under_nodes(mem, __section_nr(section));
 
 	mem->section_count--;
-	if (mem->section_count == 0) {
-		mem_remove_simple_file(mem, phys_index);
-		mem_remove_simple_file(mem, end_phys_index);
-		mem_remove_simple_file(mem, state);
-		mem_remove_simple_file(mem, phys_device);
-		mem_remove_simple_file(mem, removable);
+	if (mem->section_count == 0)
 		unregister_memory(mem);
-	} else
+	else
 		kobject_put(&mem->dev.kobj);
 
 	mutex_unlock(&mem_sysfs_mutex);
