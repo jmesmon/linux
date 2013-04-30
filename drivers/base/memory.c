@@ -77,21 +77,6 @@ static void memory_block_release(struct device *dev)
 	kfree(mem);
 }
 
-/*
- * register_memory - Setup a sysfs device for a memory block
- */
-static
-int register_memory(struct memory_block *memory)
-{
-	int error;
-
-	memory->dev.bus = &memory_subsys;
-	memory->dev.id = memory->start_section_nr / sections_per_block;
-	memory->dev.release = memory_block_release;
-
-	error = device_register(&memory->dev);
-	return error;
-}
 
 unsigned long __weak memory_block_size_bytes(void)
 {
@@ -375,6 +360,22 @@ static DEVICE_ATTR(removable, 0444, show_mem_removable, NULL);
 	device_create_file(&mem->dev, &dev_attr_##attr_name)
 #define mem_remove_simple_file(mem, attr_name)	\
 	device_remove_file(&mem->dev, &dev_attr_##attr_name)
+
+/*
+ * register_memory - Setup a sysfs device for a memory block
+ */
+static
+int register_memory(struct memory_block *memory)
+{
+	int error;
+
+	memory->dev.bus = &memory_subsys;
+	memory->dev.id = memory->start_section_nr / sections_per_block;
+	memory->dev.release = memory_block_release;
+
+	error = device_register(&memory->dev);
+	return error;
+}
 
 /*
  * Block size attribute stuff
