@@ -374,6 +374,18 @@ int register_memory(struct memory_block *memory)
 	memory->dev.release = memory_block_release;
 
 	error = device_register(&memory->dev);
+
+	if (!error)
+		error = mem_create_simple_file(memory, phys_index);
+	if (!error)
+		error = mem_create_simple_file(memory, end_phys_index);
+	if (!error)
+		error = mem_create_simple_file(memory, state);
+	if (!error)
+		error = mem_create_simple_file(memory, phys_device);
+	if (!error)
+		error = mem_create_simple_file(memory, removable);
+
 	return error;
 }
 
@@ -570,17 +582,6 @@ static int init_memory_block(struct memory_block **memory,
 	mem->phys_device = arch_get_memory_phys_device(start_pfn);
 
 	ret = register_memory(mem);
-	if (!ret)
-		ret = mem_create_simple_file(mem, phys_index);
-	if (!ret)
-		ret = mem_create_simple_file(mem, end_phys_index);
-	if (!ret)
-		ret = mem_create_simple_file(mem, state);
-	if (!ret)
-		ret = mem_create_simple_file(mem, phys_device);
-	if (!ret)
-		ret = mem_create_simple_file(mem, removable);
-
 	*memory = mem;
 	return ret;
 }
