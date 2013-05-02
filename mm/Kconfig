@@ -169,6 +169,31 @@ config MOVABLE_NODE
 config HAVE_BOOTMEM_INFO_NODE
 	def_bool n
 
+config DYNAMIC_NUMA
+	bool "Dynamic Numa: Allow NUMA layout to change after boot time"
+	depends on NUMA
+	depends on SPARSEMEM
+	depends on MEMORY_HOTPLUG # locking + mem_online_node().
+	help
+	 Dynamic Numa (DNUMA) allows the movement of pages between NUMA nodes at
+	 run time.
+
+	 Typically, this is used on systems running under a hypervisor which
+	 may move the running VM based on the hypervisors needs. On such a
+	 system, this config option enables Linux to update it's knowledge of
+	 the memory layout.
+
+	 If the feature is enabled but not used, there is a small
+	 amount of overhead (an additional null pointer check in mem_section)
+	 is added to all page frees.
+
+	 This is only useful if you enable some of the additional options to
+	 allow modifications of the numa memory layout (either through hypervisor events
+	 or a userspace interface).
+
+	 Choose Y if you have are running linux under a hypervisor that uses
+	 this feature, otherwise choose N if unsure.
+
 # eventually, we can have this option just 'select SPARSEMEM'
 config MEMORY_HOTPLUG
 	bool "Allow for memory hot-add"
