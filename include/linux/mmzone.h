@@ -1110,6 +1110,24 @@ struct mem_section {
 	 * section. (see memcontrol.h/page_cgroup.h about this.)
 	 */
 	struct page_cgroup *page_cgroup;
+#endif
+#ifdef CONFIG_DYNAMIC_NUMA
+	/*
+	 * contains PAGES_PER_SECTION bits, see mm/dnuma.c &
+	 * include/linux/dnuma.h for more info.
+	 *
+	 * memlayout_lock must be held when changing from NULL to a valid
+	 * pointer to PAGES_PER_SECTION bits.
+	 *
+	 * Returned to NULL outside of memlayout_lock when the mem_section is
+	 * removed (and we can be sure that no pages within the section will be
+	 * freed).
+	 *
+	 * All changing of bits must use atomic operators.
+	 */
+	unsigned long *lookup_node_mark;
+#endif
+#if defined(CONFIG_DYNAMIC_NUMA) ^ defined(CONFIG_MEMCG)
 	unsigned long pad;
 #endif
 	/*
