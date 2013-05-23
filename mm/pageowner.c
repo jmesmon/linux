@@ -26,12 +26,8 @@ read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
 	unsigned long pfn;
 	struct page *page;
-	char *kbuf, *modname;
-	const char *symname;
+	char *kbuf;
 	int ret = 0;
-	char namebuf[128];
-	unsigned long offset = 0, symsize;
-	int i;
 	ssize_t num_written = 0;
 	int blocktype = 0, pagetype = 0;
 
@@ -67,7 +63,7 @@ read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 				pfn);
 
 		/* Stop search if page is allocated and has trace info */
-		if (page->order >= 0 && page->trace[0]) {
+		if (page->order >= 0 && page->trace.nr_entries) {
 			//intk("stopped search at pfn: %ld\n", pfn);
 			break;
 		}
@@ -126,20 +122,13 @@ read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 
 	num_written = ret;
 
-	for (i = 0; i < 8; i++) {
-		if (!page->trace[i])
-			break;
-		symname = kallsyms_lookup(page->trace[i], &symsize, &offset,
-					&modname, namebuf);
-		ret = snprintf(kbuf + num_written, count - num_written,
-				"[0x%lx] %s+%lu\n",
-				page->trace[i], namebuf, offset);
-		if (ret >= count - num_written) {
-			ret = -ENOMEM;
-			goto out;
-		}
-		num_written += ret;
+	ret = snprint_stack_trace(kbuf + num_written, count - num_written,
+				  &page->trace, 0);
+	if (ret >= count - num_written) {
+		ret = -ENOMEM;
+		goto out;
 	}
+	num_written += ret;
 
 	ret = snprintf(kbuf + num_written, count - num_written, "\n");
 	if (ret >= count - num_written) {
