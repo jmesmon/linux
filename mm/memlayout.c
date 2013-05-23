@@ -9,6 +9,7 @@
 #include <linux/dnuma.h>
 #include <linux/export.h>
 #include <linux/memblock.h>
+#include <linux/memory.h>
 #include <linux/printk.h>
 #include <linux/rbtree.h>
 #include <linux/rcupdate.h>
@@ -322,6 +323,7 @@ void memlayout_commit(struct memlayout *ml)
 	drain_all_pages();
 	/* All new page allocations now match the memlayout */
 
+	refresh_memory_blocks(ml);
 	ml_backlog_feed(old_ml);
 
 	mutex_unlock(&memlayout_lock);
