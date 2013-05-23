@@ -672,6 +672,78 @@ static void __init parse_drconf_memory(struct device_node *memory)
 	}
 }
 
+/*
+ * Similar in function to memblock's for_each_mem_pfn_range(i, nid, p_start,
+ * p_end, p_nid), except uses pseries of interfaces.
+ *
+ * Return value is 0 on success, or the negative value returned by act()
+ *
+ * On the first negative value returned by act(), the iteration is stopped and
+ * the value returned.
+ *
+ */
+static int of_for_each_memory_range(
+		int (*act)(void *priv, unsigned long start, unsigned long end, int nid),
+		void *priv)
+{
+	int default_nid = 0;
+
+	/* depends on get_n_mem_cells(&n_mem_addr_cells, &n_mem_size_cells)
+	 * having been previously called */
+	for_each_node_by_type(memory, "memory") {
+		unsigned long start;
+		unsigned long size;
+		int nid;
+		int ranges;
+		const unsigned int *memcell_buf;
+		unsigned int len;
+
+		memcell_buf = of_get_property(memory,
+			"linux,usable-memory", &len);
+		if (!memcell_buf || len <= 0)
+			memcell_buf = of_get_property(memory, "reg", &len);
+		if (!memcell_buf || len <= 0)
+			continue;
+
+		/* ranges in cell */
+		ranges = (len >> 2) / (n_mem_addr_cells + n_mem_size_cells);
+new_range:
+		/* these are order-sensitive, and modify the buffer pointer */
+		start = read_n_cells(n_mem_addr_cells, &memcell_buf);
+		size = read_n_cells(n_mem_size_cells, &memcell_buf);
+
+		/*
+		 * Assumption: either all memory nodes or none will
+		 * have associativity properties.  If none, then
+		 * everything goes to default_nid.
+		 */
+		nid = of_node_to_nid_single(memory);
+		if (nid < 0)
+			nid = default_nid;
+
+		r = act(priv, start, size, nid);
+		if (r < 0)
+			return r;
+
+		if (--ranges)
+			goto new_range;
+	}
+
+	return 0;
+}
+
+static int _parse_mem_properties(void *priv, unsigned long start, unsigned long end, int nid)
+{
+	fake_numa_create_new_node(((start + size) >> PAGE_SHIFT), &nid);
+	node_set_online(nid);
+
+	if (!(size = numa_enforce_memory_limit(start, size)))
+		return 0;
+
+	memblock_set_node(start, size, nid);
+	return 0;
+}
+
 static int __init parse_numa_properties(void)
 {
 	struct device_node *memory;
@@ -715,53 +787,8 @@ static int __init parse_numa_properties(void)
 	}
 
 	get_n_mem_cells(&n_mem_addr_cells, &n_mem_size_cells);
-
-	for_each_node_by_type(memory, "memory") {
-		unsigned long start;
-		unsigned long size;
-		int nid;
-		int ranges;
-		const unsigned int *memcell_buf;
-		unsigned int len;
-
-		memcell_buf = of_get_property(memory,
-			"linux,usable-memory", &len);
-		if (!memcell_buf || len <= 0)
-			memcell_buf = of_get_property(memory, "reg", &len);
-		if (!memcell_buf || len <= 0)
-			continue;
-
-		/* ranges in cell */
-		ranges = (len >> 2) / (n_mem_addr_cells + n_mem_size_cells);
-new_range:
-		/* these are order-sensitive, and modify the buffer pointer */
-		start = read_n_cells(n_mem_addr_cells, &memcell_buf);
-		size = read_n_cells(n_mem_size_cells, &memcell_buf);
-
-		/*
-		 * Assumption: either all memory nodes or none will
-		 * have associativity properties.  If none, then
-		 * everything goes to default_nid.
-		 */
-		nid = of_node_to_nid_single(memory);
-		if (nid < 0)
-			nid = default_nid;
-
-		fake_numa_create_new_node(((start + size) >> PAGE_SHIFT), &nid);
-		node_set_online(nid);
-
-		if (!(size = numa_enforce_memory_limit(start, size))) {
-			if (--ranges)
-				goto new_range;
-			else
-				continue;
-		}
-
-		memblock_set_node(start, size, nid);
-
-		if (--ranges)
-			goto new_range;
-	}
+	if (of_for_each_memory_range(_parse_mem_properties, NULL))
+		return -1;
 
 	/*
 	 * Now do the same thing for each MEMBLOCK listed in the
@@ -804,7 +831,7 @@ void __init dump_numa_cpu_topology(void)
 	unsigned int node;
 	unsigned int cpu, count;
 
-	if (min_common_depth == -1 || !numa_enabled)
+	if (min_common_depth == -1 || numa_enabled == 0)
 		return;
 
 	for_each_online_node(node) {
@@ -839,7 +866,7 @@ static void __init dump_numa_memory_topology(void)
 	unsigned int node;
 	unsigned int count;
 
-	if (min_common_depth == -1 || !numa_enabled)
+	if (min_common_depth == -1 || numa_enabled == 0)
 		return;
 
 	for_each_online_node(node) {
@@ -1199,7 +1226,7 @@ int hot_add_scn_to_nid(unsigned long scn_addr)
 	struct device_node *memory = NULL;
 	int nid, found = 0;
 
-	if (!numa_enabled || (min_common_depth < 0))
+	if (numa_enabled == 0 || (min_common_depth < 0))
 		return first_online_node;
 
 	memory = of_find_node_by_path("/ibm,dynamic-reconfiguration-memory");
@@ -1671,3 +1698,23 @@ static int topology_update_init(void)
 }
 device_initcall(topology_update_init);
 #endif /* CONFIG_PPC_SPLPAR */
+
+#ifdef CONFIG_DYNAMIC_NUMA
+
+static int add_of_mem_range_to_ml(void *priv, unsigned long start,
+		unsigned long size, int nid)
+{
+	struct memlayout *ml = priv;
+	memlayout_add_range(ml, start, size, nid);
+	return 0;
+}
+
+static int memlayout_from_pseries_devicetree(void)
+{
+	struct memlayout *ml = memlayout_create(ML_DNUMA);
+
+	/* see parse_numa_properties() and parse_drconf_memory() */
+	of_for_each_memory_range(add_of_mem_range_to_ml, ml);
+
+}
+#endif /* CONFIG_DYNAMIC_NUMA */
