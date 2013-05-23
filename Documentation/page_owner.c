@@ -32,12 +32,13 @@ int read_block(char *buf, FILE *fin)
 {
 	int ret = 0;
 	int hit = 0;
-	int val;
 	char *curr = buf;
 
 	for (;;) {
-		val = getc(fin);
-		if (val == EOF) return -1;
+		int val = getc(fin);
+
+		if (val == EOF)
+			return -1;
 		*curr = val;
 		ret++;
 		if (*curr == '\n' && hit == 1)
