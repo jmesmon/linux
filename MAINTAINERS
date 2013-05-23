@@ -3865,9 +3865,16 @@ M:	K. Y. Srinivasan <kys@microsoft.com>
 M:	Haiyang Zhang <haiyangz@microsoft.com>
 L:	devel@linuxdriverproject.org
 S:	Maintained
-F:	drivers/hv/
+F:	arch/x86/include/asm/mshyperv.h
+F:	arch/x86/include/uapi/asm/hyperv.h
+F:	arch/x86/kernel/cpu/mshyperv.c
 F:	drivers/hid/hid-hyperv.c
+F:	drivers/hv/
 F:	drivers/net/hyperv/
+F:	drivers/scsi/storvsc_drv.c
+F:	drivers/video/hyperv_fb.c
+F:	include/linux/hyperv.h
+F:	tools/hv/
 
 I2C OVER PARALLEL PORT
 M:	Jean Delvare <khali@linux-fr.org>
@@ -5413,7 +5420,9 @@ F:	include/media/mt9v032.h
 
 MULTIFUNCTION DEVICES (MFD)
 M:	Samuel Ortiz <sameo@linux.intel.com>
-T:	git git://git.kernel.org/pub/scm/linux/kernel/git/sameo/mfd-2.6.git
+M:	Lee Jones <lee.jones@linaro.org>
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/sameo/mfd-next.git
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/sameo/mfd-fixes.git
 S:	Supported
 F:	drivers/mfd/
 
@@ -5516,18 +5525,18 @@ F:	Documentation/networking/s2io.txt
 F:	Documentation/networking/vxge.txt
 F:	drivers/net/ethernet/neterion/
 
-NETFILTER/IPTABLES/IPCHAINS
-P:	Harald Welte
-P:	Jozsef Kadlecsik
+NETFILTER/IPTABLES
 M:	Pablo Neira Ayuso <pablo@netfilter.org>
 M:	Patrick McHardy <kaber@trash.net>
+M:	Jozsef Kadlecsik <kadlec@blackhole.kfki.hu>
 L:	netfilter-devel@vger.kernel.org
 L:	netfilter@vger.kernel.org
 L:	coreteam@netfilter.org
 W:	http://www.netfilter.org/
 W:	http://www.iptables.org/
-T:	git git://1984.lsi.us.es/nf
-T:	git git://1984.lsi.us.es/nf-next
+Q:	http://patchwork.ozlabs.org/project/netfilter-devel/list/
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/pablo/nf.git
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/pablo/nf-next.git
 S:	Supported
 F:	include/linux/netfilter*
 F:	include/linux/netfilter/
@@ -6076,6 +6085,7 @@ L:	linux-parisc@vger.kernel.org
 W:	http://www.parisc-linux.org/
 Q:	http://patchwork.kernel.org/project/linux-parisc/list/
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/jejb/parisc-2.6.git
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/deller/parisc-linux.git
 S:	Maintained
 F:	arch/parisc/
 F:	drivers/parisc/
@@ -6458,7 +6468,7 @@ S:	Maintained
 F:	drivers/media/usb/pwc/*
 
 PWM SUBSYSTEM
-M:	Thierry Reding <thierry.reding@avionic-design.de>
+M:	Thierry Reding <thierry.reding@gmail.com>
 L:	linux-kernel@vger.kernel.org
 S:	Maintained
 W:	http://gitorious.org/linux-pwm
@@ -7596,7 +7606,7 @@ F:	drivers/clk/spear/
 SPI SUBSYSTEM
 M:	Mark Brown <broonie@kernel.org>
 M:	Grant Likely <grant.likely@linaro.org>
-L:	spi-devel-general@lists.sourceforge.net
+L:	linux-spi@vger.kernel.org
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/broonie/spi.git
 Q:	http://patchwork.kernel.org/project/spi-devel-general/list/
 S:	Maintained
@@ -7755,7 +7765,7 @@ F:	drivers/staging/media/solo6x10/
 STAGING - SPEAKUP CONSOLE SPEECH DRIVER
 M:	William Hubbs <w.d.hubbs@gmail.com>
 M:	Chris Brannon <chris@the-brannons.com>
-M:	Kirk Reiser <kirk@braille.uwo.ca>
+M:	Kirk Reiser <kirk@reisers.ca>
 M:	Samuel Thibault <samuel.thibault@ens-lyon.org>
 L:	speakup@braille.uwo.ca
 W:	http://www.linux-speakup.org/

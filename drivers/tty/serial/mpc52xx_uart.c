@@ -84,16 +84,6 @@ static void mpc52xx_uart_of_enumerate(void);
 static irqreturn_t mpc52xx_uart_int(int irq, void *dev_id);
 static irqreturn_t mpc5xxx_uart_process_int(struct uart_port *port);
 
-
-/* Simple macro to test if a port is console or not. This one is taken
- * for serial_core.c and maybe should be moved to serial_core.h ? */
-#ifdef CONFIG_SERIAL_CORE_CONSOLE
-#define uart_console(port) \
-	((port)->cons && (port)->cons->index == (port)->line)
-#else
-#define uart_console(port)	(0)
-#endif
-
 /* ======================================================================== */
 /* PSC fifo operations for isolating differences between 52xx and 512x      */
 /* ======================================================================== */
@@ -1497,18 +1487,23 @@ mpc52xx_uart_init(void)
 	if (psc_ops && psc_ops->fifoc_init) {
 		ret = psc_ops->fifoc_init();
 		if (ret)
-			return ret;
+			goto err_init;
 	}
 
 	ret = platform_driver_register(&mpc52xx_uart_of_driver);
 	if (ret) {
 		printk(KERN_ERR "%s: platform_driver_register failed (%i)\n",
 		       __FILE__, ret);
-		uart_unregister_driver(&mpc52xx_uart_driver);
-		return ret;
+		goto err_reg;
 	}
 
 	return 0;
+err_reg:
+	if (psc_ops && psc_ops->fifoc_uninit)
+		psc_ops->fifoc_uninit();
+err_init:
+	uart_unregister_driver(&mpc52xx_uart_driver);
+	return ret;
 }
 
 static void __exit

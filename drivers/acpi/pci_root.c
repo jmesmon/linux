@@ -100,13 +100,12 @@ get_root_bridge_busnr_callback(struct acpi_resource *resource, void *data)
 {
 	struct resource *res = data;
 	struct acpi_resource_address64 address;
+	acpi_status status;
 
-	if (resource->type != ACPI_RESOURCE_TYPE_ADDRESS16 &&
-	    resource->type != ACPI_RESOURCE_TYPE_ADDRESS32 &&
-	    resource->type != ACPI_RESOURCE_TYPE_ADDRESS64)
+	status = acpi_resource_to_address64(resource, &address);
+	if (ACPI_FAILURE(status))
 		return AE_OK;
 
-	acpi_resource_to_address64(resource, &address);
 	if ((address.address_length > 0) &&
 	    (address.resource_type == ACPI_BUS_NUMBER_RANGE)) {
 		res->start = address.minimum;
@@ -641,7 +640,9 @@ static void _handle_hotplug_event_root(struct work_struct *work)
 		/* bus enumerate */
 		printk(KERN_DEBUG "%s: Bus check notify on %s\n", __func__,
 				 (char *)buffer.pointer);
-		if (!root)
+		if (root)
+			acpiphp_check_host_bridge(handle);
+		else
 			handle_root_bridge_insertion(handle);
 
 		break;
