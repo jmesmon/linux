@@ -581,7 +581,10 @@ static int init_memory_block(struct memory_block **memory,
 	if (!ret)
 		ret = mem_create_simple_file(mem, removable);
 
-	*memory = mem;
+	if (ret)
+		kfree(mem);
+	else
+		*memory = mem;
 	return ret;
 }
 
