@@ -1127,6 +1127,7 @@ struct mem_section {
 	struct page_cgroup *page_cgroup;
 	unsigned long pad;
 #endif
+	void *bomb_the_kernel;
 };
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
