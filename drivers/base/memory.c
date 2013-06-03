@@ -607,7 +607,10 @@ static int init_memory_block(struct memory_block **memory,
 
 	ret = register_memory(mem);
 
-	*memory = mem;
+	if (ret)
+		kfree(mem);
+	else
+		*memory = mem;
 	return ret;
 }
 
