@@ -68,7 +68,7 @@ static ssize_t node_read_meminfo(struct device *dev,
 	n = sprintf(buf,
 		       "Node %d MemTotal:       %8lu kB\n"
 		       "Node %d MemFree:        %8lu kB\n"
-		       "Node %d MemUsed:        %8lu kB\n"
+		       "Node %d MemUsed:        %8ld kB\n"
 		       "Node %d Active:         %8lu kB\n"
 		       "Node %d Inactive:       %8lu kB\n"
 		       "Node %d Active(anon):   %8lu kB\n"
@@ -95,8 +95,8 @@ static ssize_t node_read_meminfo(struct device *dev,
 	n += sprintf(buf + n,
 		       "Node %d HighTotal:      %8lu kB\n"
 		       "Node %d HighFree:       %8lu kB\n"
-		       "Node %d LowTotal:       %8lu kB\n"
-		       "Node %d LowFree:        %8lu kB\n",
+		       "Node %d LowTotal:       %8ld kB\n"
+		       "Node %d LowFree:        %8ld kB\n",
 		       nid, K(i.totalhigh),
 		       nid, K(i.freehigh),
 		       nid, K(i.totalram - i.totalhigh),
