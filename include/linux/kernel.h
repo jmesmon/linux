@@ -782,6 +782,17 @@ static inline void ftrace_dump(enum ftrace_dump_mode oops_dump_mode) { }
 	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
 	(type *)( (char *)__mptr - offsetof(type,member) );})
 
+/**
+ * CLAMP_MIN - return a value that is at least min
+ * @val: current value
+ * @min: minimum allowed value
+ *
+ * This specifically avoids the use of ({}) constructs so it can be used
+ * outside a function. As a result, it does no typechecking and may evaluate
+ * @val and @min more than once.
+ */
+#define CLAMP_MIN(val, min) ((val) < (min) ? (min) : (val))
+
 /* Trap pasters of __FUNCTION__ at compile-time */
 #define __FUNCTION__ (__func__)
 
