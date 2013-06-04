@@ -702,6 +702,21 @@ static void free_one_page(struct zone *zone, struct page *page, int order,
 }
 
 #ifdef CONFIG_DYNAMIC_NUMA
+static void free_one_page_to_new_zone(struct zone *zone, struct page *page,
+				      int order, int migratetype)
+{
+	spin_lock(&zone->lock);
+	zone->all_unreclaimable = 0;
+	zone->pages_scanned = 0;
+
+	dnuma_add_page_to_new_zone(page, order, zone, zone->node);
+	__free_one_page(page, zone, order, migratetype);
+	if (!is_migrate_isolate(migratetype))
+		__mod_zone_freepage_state(zone, 1 << order, migratetype);
+	dnuma_post_free_to_new_zone(order);
+	spin_unlock(&zone->lock);
+}
+
 void return_pages_to_zone(struct page *page, unsigned int order,
 			  struct zone *zone)
 {
@@ -709,6 +724,12 @@ void return_pages_to_zone(struct page *page, unsigned int order,
 	local_irq_save(flags);
 	free_one_page(zone, page, order, get_freepage_migratetype(page));
 	local_irq_restore(flags);
+}
+#else
+static void free_one_page_to_new_zone(struct zone *zone, struct page *page,
+				      int order, int migratetype)
+{
+	BUG();
 }
 #endif
 
