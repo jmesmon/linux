@@ -236,7 +236,7 @@ static void initialize_distance_lookup_table(int nid,
  */
 static int associativity_to_nid(const unsigned int *associativity)
 {
-	int nid = -1;
+	int nid = NUMA_NO_NODE;
 
 	if (min_common_depth == -1)
 		goto out;
@@ -246,7 +246,7 @@ static int associativity_to_nid(const unsigned int *associativity)
 
 	/* POWER4 LPAR uses 0xffff as invalid node */
 	if (nid == 0xffff || nid >= MAX_NUMNODES)
-		nid = -1;
+		nid = NUMA_NO_NODE;
 
 	if (nid > 0 && associativity[0] >= distance_ref_points_depth)
 		initialize_distance_lookup_table(nid, associativity);
