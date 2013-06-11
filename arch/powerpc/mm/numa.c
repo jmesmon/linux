@@ -1396,9 +1396,10 @@ static long hcall_vphn(unsigned long cpu, __be32 *associativity)
 	return rc;
 }
 
-static long vphn_get_associativity(unsigned long cpu,
-					__be32 *associativity)
+/* caller should avoid updating assoc data when NUMA_NO_NODE is returned */
+static int vphn_get_nid(unsigned long cpu)
 {
+	__be32 associativity[VPHN_ASSOC_BUFSIZE] = {0};
 	long rc;
 
 	rc = hcall_vphn(cpu, associativity);
@@ -1416,7 +1417,10 @@ static long vphn_get_associativity(unsigned long cpu,
 		stop_topology_update();
 	}
 
-	return rc;
+	if (rc)
+		return NUMA_NO_NODE;
+
+	return associativity_to_nid(associativity);
 }
 
 /*
@@ -1454,7 +1458,6 @@ int arch_update_cpu_topology(void)
 {
 	unsigned int cpu, sibling, changed = 0;
 	struct topology_update_data *updates, *ud;
-	__be32 associativity[VPHN_ASSOC_BUFSIZE] = {0};
 	cpumask_t updated_cpus;
 	struct device *dev;
 	int weight, new_nid, i = 0;
@@ -1487,8 +1490,7 @@ int arch_update_cpu_topology(void)
 		}
 
 		/* Use associativity from first thread for all siblings */
-		vphn_get_associativity(cpu, associativity);
-		new_nid = associativity_to_nid(associativity);
+		new_nid = vphn_get_nid(cpu);
 		if (new_nid < 0 || !node_online(new_nid))
 			new_nid = first_online_node;
 
