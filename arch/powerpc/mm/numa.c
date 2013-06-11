@@ -681,6 +681,8 @@ static void __init parse_drconf_memory(struct device_node *memory)
  * On the first negative value returned by act(), the iteration is stopped and
  * the value returned.
  *
+ * depends on get_n_mem_cells(&n_mem_addr_cells, &n_mem_size_cells) having
+ * already been called.
  */
 static int of_for_each_memory_range(
 		int (*act)(void *priv, unsigned long start, unsigned long end, int nid),
@@ -688,8 +690,6 @@ static int of_for_each_memory_range(
 {
 	int default_nid = 0;
 
-	/* depends on get_n_mem_cells(&n_mem_addr_cells, &n_mem_size_cells)
-	 * having been previously called */
 	for_each_node_by_type(memory, "memory") {
 		unsigned long start;
 		unsigned long size;
