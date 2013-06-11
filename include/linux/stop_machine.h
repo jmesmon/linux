@@ -102,7 +102,7 @@ static inline int try_stop_cpus(const struct cpumask *cpumask,
  * stop_machine: freeze the machine on all CPUs and run this function
  * @fn: the function to run
  * @data: the data ptr for the @fn()
- * @cpus: the cpus to run the @fn() on (NULL = any online cpu)
+ * @cpus: the cpus to run the @fn() on (NULL = a single, arbitrary online cpu)
  *
  * Description: This causes a thread to be scheduled on every cpu,
  * each of which disables interrupts.  The result is that no one is
@@ -117,7 +117,7 @@ int stop_machine(int (*fn)(void *), void *data, const struct cpumask *cpus);
  * __stop_machine: freeze the machine on all CPUs and run this function
  * @fn: the function to run
  * @data: the data ptr for the @fn
- * @cpus: the cpus to run the @fn() on (NULL = any online cpu)
+ * @cpus: the cpus to run the @fn() on (NULL = a single, arbitrary online cpu)
  *
  * Description: This is a special version of the above, which assumes cpus
  * won't come or go while it's being called.  Used by hotplug cpu.
