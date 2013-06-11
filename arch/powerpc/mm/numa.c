@@ -1442,7 +1442,7 @@ static long vphn_get_associativity(unsigned long cpu,
 }
 
 /*
- * Update the CPU maps and sysfs entries for a single CPU when its NUMA
+ * Update the CPU maps and sysfs entries for a multiple CPUs when their NUMA
  * characteristics change. This function doesn't perform any locking and is
  * only safe to call from stop_machine().
  */
