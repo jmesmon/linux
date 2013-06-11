@@ -6179,7 +6179,7 @@ static int __meminit __zone_pcp_update(void *data)
 {
 	struct zone *zone = data;
 	int cpu;
-	unsigned long batch = zone_batchsize(zone), flags;
+	unsigned long batch = zone_batchsize(zone);
 
 	for_each_possible_cpu(cpu) {
 		struct per_cpu_pageset *pset;
@@ -6188,12 +6188,10 @@ static int __meminit __zone_pcp_update(void *data)
 		pset = per_cpu_ptr(zone->pageset, cpu);
 		pcp = &pset->pcp;
 
-		local_irq_save(flags);
 		if (pcp->count > 0)
 			free_pcppages_bulk(zone, pcp->count, pcp);
 		drain_zonestat(zone, pset);
 		setup_pageset(pset, batch);
-		local_irq_restore(flags);
 	}
 	return 0;
 }
