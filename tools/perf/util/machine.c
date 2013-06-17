@@ -1162,6 +1162,7 @@ static int machine__resolve_callchain_sample(struct machine *machine,
 					     struct symbol **parent)
 
 {
+	/* "chain" has 2 entries! */
 	u8 cpumode = PERF_RECORD_MISC_USER;
 	unsigned int i;
 	int err;
@@ -1169,10 +1170,12 @@ static int machine__resolve_callchain_sample(struct machine *machine,
 	callchain_cursor_reset(&callchain_cursor);
 
 	if (chain->nr > PERF_MAX_STACK_DEPTH) {
+		fprintf(stderr, "bad callchain %llu\n", (unsigned long long)chain->nr);
 		pr_warning("corrupted callchain. skipping...\n");
 		return 0;
 	}
 
+	/* ALL the IPs are just PERF_CONTEXT_KERNEL followed by PERF_CONTEXT_USER */
 	for (i = 0; i < chain->nr; i++) {
 		u64 ip;
 		struct addr_location al;

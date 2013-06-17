@@ -258,6 +258,7 @@ static struct hist_entry *perf_evsel__add_hist_entry(struct perf_evsel *evsel,
 	if ((sort__has_parent || symbol_conf.use_callchain) && sample->callchain) {
 		err = machine__resolve_callchain(machine, evsel, al->thread,
 						sample, &parent);
+		/* YYY: We don't get errors here */
 		if (err)
 			return NULL;
 	}
@@ -268,8 +269,10 @@ static struct hist_entry *perf_evsel__add_hist_entry(struct perf_evsel *evsel,
 		return NULL;
 
 	if (symbol_conf.use_callchain) {
+		/* YYY: this _does_ get called */
 		err = callchain_append(he->callchain, &callchain_cursor,
 				       sample->period);
+		/* YYY: nope */
 		if (err)
 			return NULL;
 	}
@@ -714,6 +717,7 @@ static void perf_event__process_sample(struct perf_tool *tool,
 	struct addr_location al;
 	int err;
 
+	/* YYY: not hitting this, we have a machine. */
 	if (!machine && perf_guest) {
 		static struct intlist *seen;
 
@@ -737,8 +741,9 @@ static void perf_event__process_sample(struct perf_tool *tool,
 	if (event->header.misc & PERF_RECORD_MISC_EXACT_IP)
 		top->exact_samples++;
 
+	/* very few samples are filtered ~10 out of 14K */
 	if (perf_event__preprocess_sample(event, machine, &al, sample,
-					  symbol_filter) < 0 ||
+					  NULL) < 0 ||
 	    al.filtered)
 		return;
 
@@ -789,6 +794,7 @@ static void perf_event__process_sample(struct perf_tool *tool,
 	if (al.sym == NULL || !al.sym->ignore) {
 		struct hist_entry *he = perf_evsel__add_hist_entry(evsel, &al, sample, machine);
 		if (he == NULL) {
+			/* YYY: not hitting this */
 			pr_err("Problem incrementing symbol period, skipping event\n");
 			return;
 		}
@@ -1126,6 +1132,7 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 	if (argc)
 		usage_with_options(top_usage, options);
 
+	fprintf(stderr, "call-graph: %d vs %d\n", top.record_opts.call_graph, symbol_conf.use_callchain);
 	if (sort_order == default_sort_order)
 		sort_order = "dso,symbol";
 
