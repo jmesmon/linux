@@ -245,16 +245,34 @@ out_unlock:
 
 static const char		CONSOLE_CLEAR[] = "[H[2J";
 
+/* builtin-report.c uses a _very_ similar function */
 static struct hist_entry *perf_evsel__add_hist_entry(struct perf_evsel *evsel,
 						     struct addr_location *al,
-						     struct perf_sample *sample)
+						     struct perf_sample *sample,
+						     struct machine *machine)
 {
 	struct hist_entry *he;
+	struct symbol *parent = NULL;
+	int err = 0;
 
-	he = __hists__add_entry(&evsel->hists, al, NULL, sample->period,
+	if ((sort__has_parent || symbol_conf.use_callchain) && sample->callchain) {
+		err = machine__resolve_callchain(machine, evsel, al->thread,
+						sample, &parent);
+		if (err)
+			return NULL;
+	}
+
+	he = __hists__add_entry(&evsel->hists, al, parent, sample->period,
 				sample->weight);
 	if (he == NULL)
 		return NULL;
+
+	if (symbol_conf.use_callchain) {
+		err = callchain_append(he->callchain, &callchain_cursor,
+				       sample->period);
+		if (err)
+			return NULL;
+	}
 
 	hists__inc_nr_events(&evsel->hists, PERF_RECORD_SAMPLE);
 	return he;
@@ -769,29 +787,10 @@ static void perf_event__process_sample(struct perf_tool *tool,
 	}
 
 	if (al.sym == NULL || !al.sym->ignore) {
-		struct hist_entry *he;
-
-		if ((sort__has_parent || symbol_conf.use_callchain) &&
-		    sample->callchain) {
-			err = machine__resolve_callchain(machine, evsel,
-							 al.thread, sample,
-							 &parent);
-
-			if (err)
-				return;
-		}
-
-		he = perf_evsel__add_hist_entry(evsel, &al, sample);
+		struct hist_entry *he = perf_evsel__add_hist_entry(evsel, &al, sample, machine);
 		if (he == NULL) {
 			pr_err("Problem incrementing symbol period, skipping event\n");
 			return;
-		}
-
-		if (symbol_conf.use_callchain) {
-			err = callchain_append(he->callchain, &callchain_cursor,
-					       sample->period);
-			if (err)
-				return;
 		}
 
 		if (top->sort_has_symbols)
