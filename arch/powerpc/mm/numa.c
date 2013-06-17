@@ -1525,9 +1525,29 @@ int arch_update_cpu_topology(void)
 	return changed;
 }
 
+#ifdef CONFIG_DYNAMIC_NUMA
+static int add_of_mem_range_to_ml(void *priv, unsigned long start,
+		unsigned long size, int nid)
+{
+	struct memlayout *ml = priv;
+	memlayout_add_range(ml, start, size, nid);
+	return 0;
+}
+
+static int set_memlayout_from_pseries_devicetree(void)
+{
+	struct memlayout *ml = memlayout_create(ML_DNUMA);
+
+	of_for_each_memory_range(add_of_mem_range_to_ml, ml);
+
+	memlayout_commit(ml);
+}
+#endif /* CONFIG_DYNAMIC_NUMA */
+
 static void topology_work_fn(struct work_struct *work)
 {
 	rebuild_sched_domains();
+	set_memlayout_from_pseries_devicetree();
 }
 static DECLARE_WORK(topology_work, topology_work_fn);
 
@@ -1558,11 +1578,17 @@ static void reset_topology_timer(void)
 
 #ifdef CONFIG_SMP
 
-static void stage_topology_update(int core_id)
+static void stage_mem_topology_update(void)
+{
+	mem_assoc_needs_update = true;
+	reset_topology_timer();
+}
+
+static void stage_cpu_topology_update(int core_id)
 {
 	cpumask_or(&cpu_associativity_changes_mask,
 		&cpu_associativity_changes_mask, cpu_sibling_mask(core_id));
-	reset_topology_timer();
+	stage_mem_topology_update();
 }
 
 static int dt_update_callback(struct notifier_block *nb,
@@ -1574,12 +1600,17 @@ static int dt_update_callback(struct notifier_block *nb,
 	switch (action) {
 	case OF_RECONFIG_UPDATE_PROPERTY:
 		update = (struct of_prop_reconfig *)data;
-		if (!of_prop_cmp(update->dn->type, "cpu") &&
-		    !of_prop_cmp(update->prop->name, "ibm,associativity")) {
-			u32 core_id;
-			of_property_read_u32(update->dn, "reg", &core_id);
-			stage_topology_update(core_id);
-			rc = NOTIFY_OK;
+		if (!of_prop_cmp(update->prop->name, "ibm,associativity")) {
+			if (!of_prop_cmp(update->dn->type, "cpu")) {
+				u32 core_id;
+				of_property_read_u32(update->dn, "reg",
+						&core_id);
+				stage_cpu_topology_update(core_id);
+				rc = NOTIFY_OK;
+			} else if (!of_prop_cmp(update->dn->type, "mem")) {
+				stage_mem_topology_update();
+				rc = NOTIFY_OK;
+			}
 		}
 		break;
 	}
@@ -1700,23 +1731,3 @@ static int topology_update_init(void)
 }
 device_initcall(topology_update_init);
 #endif /* CONFIG_PPC_SPLPAR */
-
-#ifdef CONFIG_DYNAMIC_NUMA
-
-static int add_of_mem_range_to_ml(void *priv, unsigned long start,
-		unsigned long size, int nid)
-{
-	struct memlayout *ml = priv;
-	memlayout_add_range(ml, start, size, nid);
-	return 0;
-}
-
-static int memlayout_from_pseries_devicetree(void)
-{
-	struct memlayout *ml = memlayout_create(ML_DNUMA);
-
-	/* see parse_numa_properties() and parse_drconf_memory() */
-	of_for_each_memory_range(add_of_mem_range_to_ml, ml);
-
-}
-#endif /* CONFIG_DYNAMIC_NUMA */
