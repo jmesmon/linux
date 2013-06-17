@@ -1284,11 +1284,14 @@ u64 memory_hotplug_max(void)
 
 /* Virtual Processor Home Node (VPHN) support */
 #ifdef CONFIG_PPC_SPLPAR
-struct topology_update_data {
-	struct topology_update_data *next;
+struct cpu_node_pair {
 	unsigned int cpu;
-	int old_nid;
-	int new_nid;
+	int nid;
+}
+
+struct topology_update_data {
+	unsigned ct;
+	struct cpu_node_pair data;
 };
 
 static u8 vphn_cpu_change_counts[NR_CPUS][MAX_DISTANCE_REF_POINTS];
@@ -1452,7 +1455,8 @@ static int vphn_get_nid(unsigned long cpu)
  */
 static int update_cpu_topology(void *data)
 {
-	struct topology_update_data *update;
+	struct topology_update_data *update = data;
+	struct cpu_node_pair *p;
 	unsigned long cpu;
 
 	if (!data)
@@ -1460,15 +1464,16 @@ static int update_cpu_topology(void *data)
 
 	cpu = get_cpu();
 
-	for (update = data; update; update = update->next) {
-		if (cpu != update->cpu)
+	for (p = update->data; (p - update->data) < update->ct; p++) {
+		if (cpu != p->cpu)
 			continue;
 
-		unregister_cpu_under_node(update->cpu, update->old_nid);
+		unregister_cpu_under_node(p->cpu,
+				numa_cpu_lookup_table[p->cpu]);
 		unmap_cpu_from_node(update->cpu);
-		map_cpu_to_node(update->cpu, update->new_nid);
+		map_cpu_to_node(p->cpu, p->nid);
 		vdso_getcpu_init();
-		register_cpu_under_node(update->cpu, update->new_nid);
+		register_cpu_under_node(p->cpu, p->nid);
 	}
 
 	return 0;
@@ -1481,7 +1486,8 @@ static int update_cpu_topology(void *data)
 int arch_update_cpu_topology(void)
 {
 	unsigned int cpu, changed = 0;
-	struct topology_update_data *updates, *ud;
+	struct topology_update_data *updates;
+	struct cpu_node_pair *p;
 	cpumask_t updated_cpus;
 	struct device *dev;
 	int weight, i = 0;
@@ -1490,25 +1496,26 @@ int arch_update_cpu_topology(void)
 	if (!weight)
 		return 0;
 
-	updates = kzalloc(weight * (sizeof(*updates)), GFP_KERNEL);
-	if (!updates)
+	updates = kzalloc(offsetof(updates, data[weight]), GFP_KERNEL);
+	if (WARN_ON(!updates))
 		return 0;
+
+	updates->ct = weight;
 
 	cpumask_clear(&updated_cpus);
 
+	p = updates->data;
 	for_each_cpu(cpu, &cpu_associativity_changes_mask) {
-		ud = &updates[i++];
-		ud->cpu = cpu;
-		ud->new_nid = vphn_get_nid(cpu);
+		p->cpu = cpu;
+		p->nid = vphn_get_nid(cpu);
 
-		if (ud->new_nid < 0 || !node_online(ud->new_nid))
-			ud->new_nid = first_online_node;
+		/* XXX: Is this even correct? */
+		if (p->nid < 0 || !node_online(p->nid))
+			p->nid = first_online_node;
 
-		ud->old_nid = numa_cpu_lookup_table[cpu];
 		cpumask_set_cpu(cpu, &updated_cpus);
 
-		if (i < weight)
-			ud->next = &updates[i];
+		p++;
 	}
 
 	stop_machine(update_cpu_topology, &updates[0], &updated_cpus);
