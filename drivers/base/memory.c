@@ -620,8 +620,7 @@ unregister_memory(struct memory_block *memory)
 	device_unregister(&memory->dev);
 }
 
-static int remove_memory_block(unsigned long node_id,
-			       struct mem_section *section, int phys_device)
+static int remove_memory_block(struct mem_section *section)
 {
 	struct memory_block *mem;
 
@@ -644,7 +643,7 @@ int unregister_memory_section(struct mem_section *section)
 	if (!present_section(section))
 		return -EINVAL;
 
-	return remove_memory_block(0, section, 0);
+	return remove_memory_block(section);
 }
 #endif /* CONFIG_MEMORY_HOTREMOVE */
 
