@@ -86,6 +86,8 @@ MODULE_LICENSE("GPL");
 /* operations */
 #define HCI_SET				0xff00
 #define HCI_GET				0xfe00
+#define HCI_TPAD_GET			0xf300
+#define HCI_TPAD_SET			0xf400
 
 /* return codes */
 #define HCI_SUCCESS			0x0000
@@ -101,6 +103,7 @@ MODULE_LICENSE("GPL");
 #define HCI_HOTKEY_EVENT		0x001e
 #define HCI_LCD_BRIGHTNESS		0x002a
 #define HCI_WIRELESS			0x0056
+#define HCI_TOUCHPAD			0x050e
 
 /* field definitions */
 #define HCI_HOTKEY_DISABLE		0x0b
@@ -136,6 +139,7 @@ struct toshiba_acpi_dev {
 	unsigned int ntfy_supported:1;
 	unsigned int info_supported:1;
 	unsigned int tr_backlight_supported:1;
+	unsigned int touchpad_supported:1;
 
 	struct mutex mutex;
 };
@@ -387,6 +391,41 @@ static enum led_brightness toshiba_illumination_get(struct led_classdev *cdev)
 	hci_raw(dev, in, out);
 
 	return result;
+}
+
+/* Touchpad Control */
+static int get_touchpad_status(struct toshiba_acpi_dev *dev)
+{
+	u32 in[HCI_WORDS] = { HCI_TPAD_GET, HCI_TOUCHPAD };
+	u32 out[HCI_WORDS];
+	acpi_status status;
+
+	status = hci_raw(dev, in, out);
+	if (ACPI_FAILURE(status) || out[0] == HCI_NOT_SUPPORTED) {
+		pr_info("touchpad control not avaliable\n");
+		return -1;
+	}
+
+	return out[2];
+}
+
+static int touchpad_set_enable(struct toshiba_acpi_dev *dev, bool on)
+{
+	u32 in[HCI_WORDS] = { HCI_TPAD_SET, HCI_TOUCHPAD, on };
+	u32 out[HCI_WORDS];
+	acpi_status status;
+
+	status = hci_raw(dev, in, out);
+	if (ACPI_FAILURE(status) || out[0] == HCI_NOT_SUPPORTED) {
+		pr_info("touchpad control not avaliable\n");
+		return -1;
+	}
+
+	if (out[0]) {
+		pr_info("unknown touchpad error code %lx\n", (unsigned long)out[0]);
+	}
+
+	return out[0];
 }
 
 /* Bluetooth rfkill handlers */
@@ -870,6 +909,26 @@ static const struct file_operations version_proc_fops = {
 	.release	= single_release,
 };
 
+static int touchpad_proc_get(void *data, u64 *val)
+{
+	struct toshiba_acpi_dev *dev = data;
+	*val = get_touchpad_status(dev);
+	return 0;
+}
+
+static int touchpad_proc_set(void *data, u64 val)
+{
+	struct toshiba_acpi_dev *dev = data;
+	int r = touchpad_set_enable(dev, val);
+	if (r) {
+		return -EINVAL;
+	}
+	return 0;
+}
+
+DEFINE_SIMPLE_PROC_ATTRIBUTE(touchpad_proc_fops,
+		touchpad_proc_get, touchpad_proc_set, "%llx\n");
+
 /* proc and module init
  */
 
@@ -889,6 +948,10 @@ static void create_toshiba_proc_entries(struct toshiba_acpi_dev *dev)
 	if (dev->hotkey_dev)
 		proc_create_data("keys", S_IRUGO | S_IWUSR, toshiba_proc_dir,
 				 &keys_proc_fops, dev);
+
+	if (dev->touchpad_supported)
+		proc_create_data("touchpad", S_IRUGO | S_IWUSR, toshiba_proc_dir,
+				 &touchpad_proc_fops, dev);
 	proc_create_data("version", S_IRUGO, toshiba_proc_dir,
 			 &version_proc_fops, dev);
 }
@@ -903,6 +966,8 @@ static void remove_toshiba_proc_entries(struct toshiba_acpi_dev *dev)
 		remove_proc_entry("fan", toshiba_proc_dir);
 	if (dev->hotkey_dev)
 		remove_proc_entry("keys", toshiba_proc_dir);
+	if (dev->touchpad_supported)
+		remove_proc_entry("touchpad", toshiba_proc_dir);
 	remove_proc_entry("version", toshiba_proc_dir);
 }
 
@@ -1235,13 +1300,14 @@ static int toshiba_acpi_add(struct acpi_device *acpi_dev)
 			dev->illumination_supported = 1;
 	}
 
-	/* Determine whether or not BIOS supports fan and video interfaces */
-
 	ret = get_video_status(dev, &dummy);
 	dev->video_supported = !ret;
 
 	ret = get_fan_status(dev, &dummy);
 	dev->fan_supported = !ret;
+
+	ret = get_touchpad_status(dev);
+	dev->touchpad_supported = (ret > 0);
 
 	create_toshiba_proc_entries(dev);
 
