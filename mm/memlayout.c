@@ -14,6 +14,7 @@
 #include <linux/rbtree.h>
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
+#include <linux/swap.h> /* lru_add_drain_all() */
 
 #include "memlayout-debugfs.h"
 
@@ -298,6 +299,7 @@ void memlayout_commit(struct memlayout *ml)
 	drain_all_pages();
 	/* All new page allocations now match the memlayout */
 
+	lru_add_drain_all();
 	refresh_memory_blocks(ml);
 	ml_backlog_feed(old_ml);
 
