@@ -28,6 +28,15 @@ struct rangemap_entry {
 	int nid;
 };
 
+enum memlayout_stat {
+	MLSTAT_CACHE_HIT,
+	MLSTAT_CACHE_MISS,
+	MLSTAT_TRANSPLANT_ON_FREE,
+	MLSTAT_TRANSPLANT_FROM_FREELIST,
+
+	MLSTAT_COUNT
+};
+
 #define RME_FMT "{%05lx-%05lx}:%d"
 #define RME_EXP(rme) rme->pfn_start, rme->pfn_end, rme->nid
 
@@ -50,8 +59,11 @@ struct memlayout {
 	struct rangemap_entry *cache;
 
 #ifdef CONFIG_DNUMA_DEBUGFS
+	struct list_head list;
 	unsigned seq;
 	struct dentry *d;
+
+	atomic64_t stats[MLSTAT_COUNT];
 #endif
 };
 
