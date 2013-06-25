@@ -2646,6 +2646,23 @@ static const struct file_operations __fops = {				\
 	.llseek	 = generic_file_llseek,					\
 };
 
+#define DEFINE_SIMPLE_PROC_ATTRIBUTE(__fops, __get, __set, __fmt)	\
+static int __fops ## _open(struct inode *inode, struct file *file)	\
+{									\
+	__simple_attr_check_format(__fmt, 0ull);			\
+	return simple_proc_attr_open(inode, file, __get, __set, __fmt);	\
+}									\
+									\
+static const struct file_operations __fops = {				\
+	.owner = THIS_MODULE,						\
+	.open = __fops ## _open,					\
+	.read = simple_attr_read,					\
+	.write = simple_attr_write,					\
+	.release = simple_attr_release,					\
+	.llseek = generic_file_llseek					\
+};
+
+
 static inline __printf(1, 2)
 void __simple_attr_check_format(const char *fmt, ...)
 {
@@ -2653,6 +2670,9 @@ void __simple_attr_check_format(const char *fmt, ...)
 }
 
 int simple_attr_open(struct inode *inode, struct file *file,
+		     int (*get)(void *, u64 *), int (*set)(void *, u64),
+		     const char *fmt);
+int simple_proc_attr_open(struct inode *inode, struct file *file,
 		     int (*get)(void *, u64 *), int (*set)(void *, u64),
 		     const char *fmt);
 int simple_attr_release(struct inode *inode, struct file *file);

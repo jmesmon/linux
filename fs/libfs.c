@@ -13,6 +13,7 @@
 #include <linux/exportfs.h>
 #include <linux/writeback.h>
 #include <linux/buffer_head.h> /* sync_mapping_buffers */
+#include <linux/proc_fs.h>
 
 #include <asm/uaccess.h>
 
@@ -766,6 +767,28 @@ int simple_attr_open(struct inode *inode, struct file *file,
 	return nonseekable_open(inode, file);
 }
 
+/* proc is "different" and doesn't use ->i_private for user data. */
+int simple_proc_attr_open(struct inode *inode, struct file *file,
+			  int (*get)(void *, u64 *), int (*set)(void *, u64),
+			  const char *fmt)
+{
+	struct simple_attr *attr;
+
+	attr = kmalloc(sizeof(*attr), GFP_KERNEL);
+	if (!attr)
+		return -ENOMEM;
+
+	attr->get = get;
+	attr->set = set;
+	attr->data = PDE_DATA(inode);
+	attr->fmt = fmt;
+	mutex_init(&attr->mutex);
+
+	file->private_data = attr;
+
+	return nonseekable_open(inode, file);
+}
+
 int simple_attr_release(struct inode *inode, struct file *file)
 {
 	kfree(file->private_data);
@@ -1009,6 +1032,7 @@ EXPORT_SYMBOL(simple_transaction_get);
 EXPORT_SYMBOL(simple_transaction_read);
 EXPORT_SYMBOL(simple_transaction_release);
 EXPORT_SYMBOL_GPL(simple_attr_open);
+EXPORT_SYMBOL_GPL(simple_proc_attr_open);
 EXPORT_SYMBOL_GPL(simple_attr_release);
 EXPORT_SYMBOL_GPL(simple_attr_read);
 EXPORT_SYMBOL_GPL(simple_attr_write);
