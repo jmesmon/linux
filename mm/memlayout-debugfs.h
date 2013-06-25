@@ -8,7 +8,8 @@ void ml_stat_add(enum memlayout_stat stat, struct memlayout *ml, int order);
 void ml_stat_inc(enum memlayout_stat stat, struct memlayout *ml);
 
 void ml_dbgfs_memlayout_init(struct memlayout *ml);
-void ml_dbgfs_memlayout_create_range(struct memlayout *ml, struct rangemap_entry *rme);
+void ml_dbgfs_memlayout_create_range(struct memlayout *ml,
+				     struct rangemap_entry *rme);
 void ml_dbgfs_memlayout_dini(struct memlayout *ml);
 
 void ml_dbgfs_set_current(struct memlayout *ml);
@@ -25,7 +26,7 @@ static inline void ml_stat_inc(enum memlayout_stat stat, struct memlayout *ml)
 static inline void ml_dbgfs_memlayout_init(struct memlayout *ml)
 {}
 static inline void ml_dbgfs_memlayout_create_range(struct memlayout *ml,
-		struct rangemap_entry *rme)
+						   struct rangemap_entry *rme)
 {}
 static inline void ml_dbgfs_memlayout_dini(struct memlayout *ml)
 {}
