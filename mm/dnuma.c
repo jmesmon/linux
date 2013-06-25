@@ -231,7 +231,7 @@ static void remove_free_pages_from_zone(struct zone *zone, struct page *page,
 
 void dnuma_post_free_to_new_zone(int order)
 {
-	ml_stat_count_moved_pages(order);
+	ml_stat_add(MLSTAT_TRANSPLANT_ON_FREE, NULL, order);
 }
 
 /*
@@ -239,7 +239,8 @@ void dnuma_post_free_to_new_zone(int order)
  * DYNAMIC_NUMA depends on MEMORY_HOTPLUG (and MEMORY_HOTPLUG makes __meminit a
  * nop).
  */
-static void __ref add_free_page_to_node(int dest_nid, struct page *page,
+static void __ref add_free_page_to_node(struct memlayout *ml,
+					int dest_nid, struct page *page,
 					int order)
 {
 	bool need_zonelists_rebuild = false;
@@ -252,12 +253,13 @@ static void __ref add_free_page_to_node(int dest_nid, struct page *page,
 	/* Add page to new zone */
 	dnuma_add_page_to_new_zone(page, order, dest_zone, dest_nid);
 	return_pages_to_zone(page, order, dest_zone);
-	dnuma_post_free_to_new_zone(order);
+	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST, ml, order);
 
 	/* FIXME: there are other states that need fixing up */
 	if (!node_state(dest_nid, N_MEMORY))
 		node_set_state(dest_nid, N_MEMORY);
 
+	/* FIXME: move somewhere else */
 	if (need_zonelists_rebuild) {
 		zone_pcp_reset(dest_zone);
 
@@ -267,7 +269,9 @@ static void __ref add_free_page_to_node(int dest_nid, struct page *page,
 	}
 }
 
+#ifdef CONFIG_DNUMA_STRICT_NODE_BOUNDS
 static void add_split_pages_to_zones(
+		struct memlayout *ml,
 		struct rangemap_entry *first_rme,
 		struct page *page, int order)
 {
@@ -277,9 +281,6 @@ static void add_split_pages_to_zones(
 	 * We avoid doing any hard work to try to split the pages optimally
 	 * here because the page allocator splits them into 0-order pages
 	 * anyway.
-	 *
-	 * XXX: All of the checks for NULL rmes and the nid conditional are to
-	 * work around memlayouts potentially not covering all valid memory.
 	 */
 	for (i = 0; i < (1 << order); i++) {
 		unsigned long pfn = page_to_pfn(page);
@@ -292,9 +293,10 @@ static void add_split_pages_to_zones(
 		else
 			nid = page_to_nid(page + i);
 
-		add_free_page_to_node(nid, page + i, 0);
+		add_free_page_to_node(ml, nid, page + i, 0);
 	}
 }
+#endif
 
 
 /*
@@ -428,8 +430,9 @@ static void lock_both_zones(struct zone *z1, struct zone *z2,
  *
  * TODO: ensure this plays nice with migratetypes and isolation.
  */
-static int dnuma_transplant_pfn_range(unsigned long pfn_start,
-		unsigned long pfn_end, struct rangemap_entry *old,
+static int dnuma_transplant_pfn_range(struct memlayout *ml,
+		unsigned long pfn_start, unsigned long pfn_end,
+		struct rangemap_entry *old,
 		struct rangemap_entry *new)
 {
 	unsigned long pfn = pfn_start;
@@ -516,6 +519,7 @@ static int dnuma_transplant_pfn_range(unsigned long pfn_start,
 					pfn_start, pfn_end,
 					RME_EXP(old), RME_EXP(new));
 
+#ifdef CONFIG_DNUMA_STRICT_NODE_BOUNDS
 			remove_free_pages_from_zone(old_zone, page, order);
 
 			spin_unlock_irqrestore(&old_zone->lock, flags);
@@ -527,14 +531,15 @@ static int dnuma_transplant_pfn_range(unsigned long pfn_start,
 			 * rme's twice (once in add_split_pages_to_zones() and
 			 * once in the function that calls this one)
 			 */
-			add_split_pages_to_zones(new, page, order);
+			add_split_pages_to_zones(ml, new, page, order);
 			return last_pfn_in_page;
+#endif
 		}
 
 		remove_free_pages_from_zone(old_zone, page, order);
 		spin_unlock_irqrestore(&old_zone->lock, flags);
 
-		add_free_page_to_node(range_nid, page, order);
+		add_free_page_to_node(ml, range_nid, page, order);
 
 		pfn = last_pfn_in_page;
 		continue;
@@ -557,6 +562,6 @@ void __ref dnuma_move_free_pages(struct memlayout *old_ml,
 	init_per_zone_wmark_min();
 
 	memlayout_for_each_delta(old_ml, new_ml, old, new, start_pfn, end_pfn)
-		end_pfn = dnuma_transplant_pfn_range(start_pfn, end_pfn,
+		end_pfn = dnuma_transplant_pfn_range(new_ml, start_pfn, end_pfn,
 						     old, new);
 }
