@@ -22,22 +22,6 @@
 __rcu struct memlayout *pfn_to_node_map;
 DEFINE_MUTEX(memlayout_lock);
 
-static void free_rme_tree(struct rb_root *root)
-{
-	struct rangemap_entry *pos, *n;
-	rbtree_postorder_for_each_entry_safe(pos, n, root, node) {
-		kfree(pos);
-	}
-}
-
-void memlayout_destroy_mem(struct memlayout *ml)
-{
-	if (!ml)
-		return;
-	free_rme_tree(&ml->root);
-	kfree(ml);
-}
-
 static int find_insertion_point(struct memlayout *ml, unsigned long pfn_start,
 		unsigned long pfn_end, int nid, struct rb_node ***o_new,
 		struct rb_node **o_parent)
@@ -93,7 +77,7 @@ int memlayout_new_range(struct memlayout *ml, unsigned long pfn_start,
 	rb_link_node(&rme->node, parent, new);
 	rb_insert_color(&rme->node, &ml->root);
 
-	ml_dbgfs_create_range(ml, rme);
+	ml_dbgfs_memlayout_create_range(ml, rme);
 	return 0;
 }
 
@@ -121,11 +105,11 @@ struct rangemap_entry *memlayout_pfn_to_rme(struct memlayout *ml,
 	smp_read_barrier_depends();
 
 	if (rme && rme_bounds_pfn(rme, pfn)) {
-		ml_stat_cache_hit();
+		ml_stat_inc(MLSTAT_CACHE_HIT, ml);
 		return rme;
 	}
 
-	ml_stat_cache_miss();
+	ml_stat_inc(MLSTAT_CACHE_MISS, ml);
 
 	node = ml->root.rb_node;
 	while (node) {
@@ -235,9 +219,25 @@ static void memlayout_expand(struct memlayout *ml)
 	}
 }
 
+static void free_rme_tree(struct rb_root *root)
+{
+	struct rangemap_entry *pos, *n;
+	rbtree_postorder_for_each_entry_safe(pos, n, root, node) {
+		kfree(pos);
+	}
+}
+
+void memlayout_destroy_mem(struct memlayout *ml)
+{
+	if (!ml)
+		return;
+	free_rme_tree(&ml->root);
+	kfree(ml);
+}
+
 void memlayout_destroy(struct memlayout *ml)
 {
-	ml_destroy_dbgfs(ml);
+	ml_dbgfs_memlayout_dini(ml);
 	memlayout_destroy_mem(ml);
 }
 
@@ -256,7 +256,7 @@ struct memlayout *memlayout_create(enum memlayout_type type)
 	ml->type = type;
 	ml->cache = NULL;
 
-	ml_dbgfs_init(ml);
+	ml_dbgfs_memlayout_init(ml);
 	return ml;
 }
 
