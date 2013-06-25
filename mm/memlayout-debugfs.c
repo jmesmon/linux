@@ -13,6 +13,11 @@ static const char *ml_stat_names[] = {
 	"cache-miss",
 	"transplant-on-free",
 	"transplant-from-freelist",
+
+	"zonelist-rebuild",
+	"no-zonelist-rebuild",
+	"pcp-setup",
+	"pcp-update",
 };
 
 /* nests inside of memlayout_lock */
