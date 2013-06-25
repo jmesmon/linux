@@ -40,7 +40,7 @@ void ml_backlog_feed(struct memlayout *ml)
 			return;
 
 		list_del(&old_ml->list);
-		backlog_ct --;
+		backlog_ct--;
 		memlayout_destroy(old_ml);
 	}
 
@@ -92,7 +92,8 @@ static void _ml_dbgfs_set_current(struct memlayout *ml, char *name_buf)
 {
 	ml_layout_name(ml, name_buf);
 	debugfs_remove(current_dentry);
-	current_dentry = debugfs_create_symlink("current", root_dentry, name_buf);
+	current_dentry = debugfs_create_symlink("current", root_dentry,
+						name_buf);
 }
 
 static atomic64_t ml_stats[MLSTAT_COUNT];
@@ -239,7 +240,8 @@ DEFINE_WATCHED_ATTR(u8, dnuma_user_clear);
 # endif /* defined(CONFIG_DNUMA_DEBUGFS_WRITE) */
 
 /* @name_buf must be at least ML_RANGE_NAME_SZ bytes */
-static int ml_dbgfs_memlayout_create_layout(struct memlayout *ml, char *name_buf)
+static int ml_dbgfs_memlayout_create_layout(struct memlayout *ml,
+					    char *name_buf)
 {
 	struct rangemap_entry *rme;
 	ml_dbgfs_create_layout_dir_assume_root(ml);
@@ -327,7 +329,8 @@ void ml_dbgfs_memlayout_init(struct memlayout *ml)
 	mutex_unlock(&ml_dbgfs_lock);
 }
 
-void ml_dbgfs_memlayout_create_range(struct memlayout *ml, struct rangemap_entry *rme)
+void ml_dbgfs_memlayout_create_range(struct memlayout *ml,
+				     struct rangemap_entry *rme)
 {
 	char name[ML_RANGE_NAME_SZ];
 	mutex_lock(&ml_dbgfs_lock);
