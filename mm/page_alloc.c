@@ -725,8 +725,11 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		mt = get_freepage_migratetype(page);
 		__free_one_page(page, dest_zone, 0, mt);
 		trace_mm_page_pcpu_drain(page, 0, mt);
-		if (is_migrate_cma(mt))
-			__mod_zone_page_state(dest_zone, NR_FREE_CMA_PAGES, 1);
+		if (likely(!is_migrate_isolate_page(page))) {
+			__mod_zone_page_state(dest_zone, NR_FREE_PAGES, 1);
+			if (is_migrate_cma(mt))
+				__mod_zone_page_state(dest_zone, NR_FREE_CMA_PAGES, 1);
+		}
 		dnuma_post_free_to_new_zone(0);
 
 		spin_unlock(&dest_zone->lock);
@@ -3580,8 +3583,8 @@ static int default_zonelist_order(void)
 		return ZONELIST_ORDER_NODE;
 	/*
 	 * look into each node's config.
-  	 * If there is a node whose DMA/DMA32 memory is very big area on
- 	 * local memory, NODE_ORDER may be suitable.
+	 * If there is a node whose DMA/DMA32 memory is very big area on
+	 * local memory, NODE_ORDER may be suitable.
          */
 	average_size = total_size /
 				(nodes_weight(node_states[N_MEMORY]) + 1);
