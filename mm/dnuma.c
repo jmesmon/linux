@@ -8,7 +8,9 @@
 #include <linux/mmzone.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/swap.h> /* kswapd_run */
 #include <linux/types.h>
+#include <linux/writeback.h> /* writeback_set_ratelimit */
 
 #include "internal.h"
 #include "memlayout-debugfs.h"
@@ -214,7 +216,10 @@ void dnuma_add_page_to_new_zone(struct page *page, int order,
 		set_page_node(&page[i], dest_nid);
 }
 
-/* must be called with zone->lock held and memlayout's update_lock held */
+/*
+ * must be called with zone->lock held (and local irq disabled) and,
+ * memlayout's update_lock held
+ */
 static void remove_free_pages_from_zone(struct zone *zone, struct page *page,
 					int order)
 {
@@ -243,30 +248,15 @@ static void __ref add_free_page_to_node(struct memlayout *ml,
 					int dest_nid, struct page *page,
 					int order)
 {
-	bool need_zonelists_rebuild = false;
 	struct zone *dest_zone = nid_zone(dest_nid, page_zonenum(page));
-	VM_BUG_ON(!zone_is_initialized(dest_zone));
 
-	if (zone_is_empty(dest_zone))
-		need_zonelists_rebuild = true;
+	VM_BUG_ON(!zone_is_initialized(dest_zone));
 
 	/* Add page to new zone */
 	dnuma_add_page_to_new_zone(page, order, dest_zone, dest_nid);
 	return_pages_to_zone(page, order, dest_zone);
 	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST, ml, order);
 
-	/* FIXME: there are other states that need fixing up */
-	if (!node_state(dest_nid, N_MEMORY))
-		node_set_state(dest_nid, N_MEMORY);
-
-	/* FIXME: move somewhere else */
-	if (need_zonelists_rebuild) {
-		zone_pcp_reset(dest_zone);
-
-		mutex_lock(&zonelists_mutex);
-		build_all_zonelists(NULL, dest_zone);
-		mutex_unlock(&zonelists_mutex);
-	}
 }
 
 #ifdef CONFIG_DNUMA_STRICT_NODE_BOUNDS
@@ -329,6 +319,7 @@ static void update_page_counts(struct memlayout *new_ml)
 	 *   over valid pfns.
 	 */
 	int nid;
+	bool need_zonelists_rebuild = false;
 	struct rangemap_entry *rme;
 	unsigned long pfn = 0;
 	struct zone_counts {
@@ -379,6 +370,10 @@ static void update_page_counts(struct memlayout *new_ml)
 				zone_num++) {
 			struct zone *zone = &node->node_zones[zone_num];
 			size_t idx = page_count_idx(nid, zone_num);
+			bool need_init_pageset = !populated_zone(zone);
+			if (need_init_pageset)
+				need_zonelists_rebuild = true;
+
 			pr_debug("nid %d zone %d mp=%lu pp=%lu -> mp=%lu pp=%lu\n",
 					nid, zone_num,
 					zone->managed_pages,
@@ -389,12 +384,22 @@ static void update_page_counts(struct memlayout *new_ml)
 			zone->present_pages = counts[idx].present_pages;
 			nid_present += zone->present_pages;
 
-			/*
-			 * recalculate pcp ->batch & ->high using
-			 * zone->managed_pages
-			 */
-			zone_pcp_update(zone);
+			if (need_init_pageset) {
+				setup_zone_pageset();
+				ml_stat_inc(MLSTAT_PCP_SETUP, ml);
+			} else {
+				/*
+				 * recalculate pcp ->batch & ->high using
+				 * zone->managed_pages
+				 */
+				zone_pcp_update(zone);
+				ml_stat_inc(MLSTAT_PCP_UPDATE, ml);
+			}
 		}
+
+		/* FIXME: there are other states that need fixing up */
+		if (!node_state(nid, N_MEMORY))
+			node_set_state(nid, N_MEMORY);
 
 		pr_debug(" node %d zone * present_pages %lu to %lu\n",
 				nid, node->node_present_pages,
@@ -403,6 +408,16 @@ static void update_page_counts(struct memlayout *new_ml)
 		node->node_present_pages = nid_present;
 		pgdat_resize_unlock(node, &flags);
 	}
+
+
+	if (need_zonelists_rebuild) {
+		ml_stat_inc(MLSTAT_ZONELIST_REBUILD, ml);
+
+		mutex_lock(&zonelists_mutex);
+		build_all_zonelists(NULL, NULL);
+		mutex_unlock(&zonelists_mutex);
+	} else
+		ml_stat_inc(MLSTAT_NO_ZONELIST_REBUILD, ml);
 
 	kfree(counts);
 }
@@ -431,6 +446,7 @@ static void lock_both_zones(struct zone *z1, struct zone *z2,
  * TODO: ensure this plays nice with migratetypes and isolation.
  */
 static int dnuma_transplant_pfn_range(struct memlayout *ml,
+		nodemask_t *n,
 		unsigned long pfn_start, unsigned long pfn_end,
 		struct rangemap_entry *old,
 		struct rangemap_entry *new)
@@ -508,6 +524,8 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 			goto skip_unlock_old;
 		}
 
+		__node_set(range_nid, n);
+
 		if (last_pfn_in_page > pfn_end) {
 			/*
 			 * this higher order page doesn't fit into the current
@@ -557,11 +575,28 @@ void __ref dnuma_move_free_pages(struct memlayout *old_ml,
 {
 	struct rangemap_entry *old, *new;
 	unsigned long start_pfn, end_pfn;
+	nodemask_t n = NODE_MASK_NONE;
+	int node;
 
 	update_page_counts(new_ml);
-	init_per_zone_wmark_min();
 
 	memlayout_for_each_delta(old_ml, new_ml, old, new, start_pfn, end_pfn)
-		end_pfn = dnuma_transplant_pfn_range(new_ml, start_pfn, end_pfn,
+		end_pfn = dnuma_transplant_pfn_range(new_ml, &n, start_pfn, end_pfn,
 						     old, new);
+
+	init_per_zone_wmark_min();
+
+	/* XXX: do we need this given that the total number of pages on the
+	 * system didn't change? */
+	for_each_node_mask(node, n)
+		kswapd_run(node);
+
+	/*
+	 * Note: while this is similar to memory_hotplug, we don't set
+	 * vm_total_pages because we aren't changing the number of pages
+	 * avaliable to the system as a whole, we're just moving pages between
+	 * zones.
+	 */
+
+	writeback_set_ratelimit();
 }
