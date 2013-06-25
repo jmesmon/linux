@@ -1,55 +1,65 @@
-#include <linux/debugfs.h>
 
-#include <linux/slab.h> /* kmalloc */
+#include <linux/debugfs.h>
+#include <linux/kernel.h> /* CLAMP_MIN */
+#include <linux/list.h>
+#include <linux/log2.h> /* roundup_pow_of_two */
 #include <linux/module.h> /* THIS_MODULE, needed for DEFINE_SIMPLE_ATTR */
+#include <linux/slab.h> /* kmalloc */
 
 #include "memlayout-debugfs.h"
 
-#if CONFIG_DNUMA_BACKLOG > 0
-/* Fixed size backlog */
-#include <linux/kfifo.h>
-#include <linux/log2.h> /* roundup_pow_of_two */
-#include <linux/kernel.h> /* clamp */
-DEFINE_KFIFO(ml_backlog, struct memlayout *,
-		CLAMP_MIN(roundup_pow_of_two(CONFIG_DNUMA_BACKLOG), 2));
+static const char *ml_stat_names[] = {
+	"cache-hit",
+	"cache-miss",
+	"transplant-on-free",
+	"transplant-from-freelist",
+};
+
+/* nests inside of memlayout_lock */
+static DEFINE_MUTEX(ml_dbgfs_lock);
+
+/* backlog handling {{{ */
+static unsigned long backlog_max = CONFIG_DNUMA_BACKLOG;
+module_param(backlog_max, ulong, 0644);
+static LIST_HEAD(ml_backlog);
+static size_t backlog_ct;
+
+/* memlayout_lock must be held */
 void ml_backlog_feed(struct memlayout *ml)
 {
-	if (kfifo_is_full(&ml_backlog)) {
-		struct memlayout *old_ml;
-		BUG_ON(!kfifo_get(&ml_backlog, &old_ml));
+	kparam_block_sysfs_write(backlog_max);
+
+	while (backlog_ct + 1 > backlog_max) {
+		struct memlayout *old_ml = list_first_entry_or_null(&ml_backlog,
+						typeof(*old_ml), list);
+		/*
+		 * occurs when backlog_max == 0, meaning the backlog is
+		 * disabled
+		 */
+		if (!old_ml)
+			return;
+
+		list_del(&old_ml->list);
+		backlog_ct --;
 		memlayout_destroy(old_ml);
 	}
 
-	kfifo_put(&ml_backlog, (const struct memlayout **)&ml);
-}
-#elif CONFIG_DNUMA_BACKLOG < 0
-/* Unlimited backlog */
-void ml_backlog_feed(struct memlayout *ml)
-{
-	/* we never use the rme_tree, so we destroy the non-debugfs portions to
-	 * save memory */
-	memlayout_destroy_mem(ml);
-}
-#else /* CONFIG_DNUMA_BACKLOG == 0 */
-/* No backlog */
-void ml_backlog_feed(struct memlayout *ml)
-{
-	memlayout_destroy(ml);
-}
-#endif
+	if (backlog_ct + 1 < backlog_max) {
+		list_add_tail(&ml_backlog, &ml->list);
+		backlog_ct++;
+	} else
+		memlayout_destroy(ml);
 
-static atomic64_t dnuma_moved_page_ct;
-void ml_stat_count_moved_pages(int order)
-{
-	atomic64_add(1 << order, &dnuma_moved_page_ct);
+	kparam_unblock_sysfs_write(backlog_max);
 }
+/* }}} */
 
 static atomic_t ml_seq = ATOMIC_INIT(0);
 static struct dentry *root_dentry, *current_dentry;
 #define ML_LAYOUT_NAME_SZ \
 	((size_t)(DIV_ROUND_UP(sizeof(unsigned) * 8, 3) \
 				+ 1 + strlen("layout.")))
-#define ML_REGION_NAME_SZ ((size_t)(2 * BITS_PER_LONG / 4 + 2))
+#define ML_RANGE_NAME_SZ ((size_t)(2 * BITS_PER_LONG / 4 + 2))
 
 static void ml_layout_name(struct memlayout *ml, char *name)
 {
@@ -78,20 +88,62 @@ static void _ml_dbgfs_create_range(struct dentry *base,
 }
 
 /* Must be called with memlayout_lock held */
-static void _ml_dbgfs_set_current(struct memlayout *ml, char *name)
+static void _ml_dbgfs_set_current(struct memlayout *ml, char *name_buf)
 {
-	ml_layout_name(ml, name);
+	ml_layout_name(ml, name_buf);
 	debugfs_remove(current_dentry);
-	current_dentry = debugfs_create_symlink("current", root_dentry, name);
+	current_dentry = debugfs_create_symlink("current", root_dentry, name_buf);
 }
 
-static void ml_dbgfs_create_layout_assume_root(struct memlayout *ml)
+static atomic64_t ml_stats[MLSTAT_COUNT];
+
+void ml_stat_add(enum memlayout_stat stat, struct memlayout *ml, int order)
+{
+	atomic64_add(1 << order, &ml_stats[stat]);
+	if (ml)
+		atomic64_add(1 << order, &ml->stats[stat]);
+}
+
+void ml_stat_inc(enum memlayout_stat stat, struct memlayout *ml)
+{
+	atomic64_inc(&ml_stats[stat]);
+	if (ml)
+		atomic64_inc(&ml->stats[stat]);
+}
+
+static void create_global_stats(void)
+{
+	size_t i;
+	struct dentry *d = debugfs_create_dir("stats", root_dentry);
+	if (!d)
+		return;
+
+	/* FIXME: use debugfs_create_atomic64() [does not yet exsist]. */
+	for (i = 0; i < MLSTAT_COUNT; i++)
+		debugfs_create_u64(ml_stat_names[i], 0400, d,
+					(uint64_t *)&ml_stats[i]);
+}
+
+static void create_ml_stats(struct memlayout *ml)
+{
+	size_t i;
+	struct dentry *d = debugfs_create_dir("stats", ml->d);
+	if (!d)
+		return;
+
+	for (i = 0; i < MLSTAT_COUNT; i++)
+		debugfs_create_u64(ml_stat_names[i], 0400, d,
+					(uint64_t *)&ml->stats[i]);
+}
+
+static void ml_dbgfs_create_layout_dir_assume_root(struct memlayout *ml)
 {
 	char name[ML_LAYOUT_NAME_SZ];
 	ml_layout_name(ml, name);
 	WARN_ON(!root_dentry);
 	ml->d = debugfs_create_dir(name, root_dentry);
 	WARN_ON(!ml->d);
+	create_ml_stats(ml);
 }
 
 # if defined(CONFIG_DNUMA_DEBUGFS_WRITE)
@@ -186,63 +238,41 @@ DEFINE_WATCHED_ATTR(u8, dnuma_user_commit);
 DEFINE_WATCHED_ATTR(u8, dnuma_user_clear);
 # endif /* defined(CONFIG_DNUMA_DEBUGFS_WRITE) */
 
+/* @name_buf must be at least ML_RANGE_NAME_SZ bytes */
+static int ml_dbgfs_memlayout_create_layout(struct memlayout *ml, char *name_buf)
+{
+	struct rangemap_entry *rme;
+	ml_dbgfs_create_layout_dir_assume_root(ml);
+	if (!ml->d)
+		return -1;
+
+	ml_for_each_range(ml, rme)
+		_ml_dbgfs_create_range(ml->d, rme, name_buf);
+
+	return 0;
+}
+
 /* create the entire current memlayout.
  * only used for the layout which exsists prior to fs initialization
  */
-static void ml_dbgfs_create_initial_layout(void)
+static void ml_dbgfs_create_layout_current(void)
 {
-	struct rangemap_entry *rme;
-	char name[max(ML_REGION_NAME_SZ, ML_LAYOUT_NAME_SZ)];
-	struct memlayout *old_ml, *new_ml;
+	char name_buf[max(ML_RANGE_NAME_SZ, ML_LAYOUT_NAME_SZ)];
+	struct memlayout *ml;
 
-	new_ml = kmalloc(sizeof(*new_ml), GFP_KERNEL);
-	if (WARN(!new_ml, "memlayout allocation failed\n"))
-		return;
-
-	mutex_lock(&memlayout_lock);
-
-	old_ml = rcu_dereference_protected(pfn_to_node_map,
+	ml = rcu_dereference_protected(pfn_to_node_map,
 			mutex_is_locked(&memlayout_lock));
-	if (WARN_ON(!old_ml))
-		goto e_out;
-	*new_ml = *old_ml;
 
-	if (WARN_ON(new_ml->d))
-		goto e_out;
-
-	/* this assumption holds as ml_dbgfs_create_initial_layout() (this
-	 * function) is only called by ml_dbgfs_create_root() */
-	ml_dbgfs_create_layout_assume_root(new_ml);
-	if (!new_ml->d)
-		goto e_out;
-
-	ml_for_each_range(new_ml, rme) {
-		_ml_dbgfs_create_range(new_ml->d, rme, name);
-	}
-
-	_ml_dbgfs_set_current(new_ml, name);
-	rcu_assign_pointer(pfn_to_node_map, new_ml);
-	mutex_unlock(&memlayout_lock);
-
-	synchronize_rcu();
-	kfree(old_ml);
-	return;
-e_out:
-	mutex_unlock(&memlayout_lock);
-	kfree(new_ml);
+	if (!ml_dbgfs_memlayout_create_layout(ml, name_buf))
+		_ml_dbgfs_set_current(ml, name_buf);
 }
 
-static atomic64_t ml_cache_hits;
-static atomic64_t ml_cache_misses;
-
-void ml_stat_cache_miss(void)
+static void ml_dbgfs_create_layouts_defered(void)
 {
-	atomic64_inc(&ml_cache_misses);
-}
-
-void ml_stat_cache_hit(void)
-{
-	atomic64_inc(&ml_cache_hits);
+	struct memlayout *ml;
+	char name_buf[ML_RANGE_NAME_SZ];
+	list_for_each_entry(ml, &ml_backlog, list)
+		ml_dbgfs_memlayout_create_layout(ml, name_buf);
 }
 
 /* returns 0 if root_dentry has been created */
@@ -262,15 +292,7 @@ static int ml_dbgfs_create_root(void)
 		return -EINVAL;
 	}
 
-	/* TODO: place in a different dir? (to keep memlayout & dnuma seperate)
-	 */
-	/* FIXME: use debugfs_create_atomic64() [does not yet exsist]. */
-	debugfs_create_u64("moved-pages", 0400, root_dentry,
-			   (uint64_t *)&dnuma_moved_page_ct.counter);
-	debugfs_create_u64("pfn-lookup-cache-misses", 0400, root_dentry,
-			   (uint64_t *)&ml_cache_misses.counter);
-	debugfs_create_u64("pfn-lookup-cache-hits", 0400, root_dentry,
-			   (uint64_t *)&ml_cache_hits.counter);
+	create_global_stats();
 
 # if defined(CONFIG_DNUMA_DEBUGFS_WRITE)
 	/* Set node last: on write, it adds the range. */
@@ -284,57 +306,79 @@ static int ml_dbgfs_create_root(void)
 			&dnuma_user_clear, &dnuma_user_clear_fops);
 # endif
 
-	/* uses root_dentry */
-	ml_dbgfs_create_initial_layout();
-
 	return 0;
 }
 
-static void ml_dbgfs_create_layout(struct memlayout *ml)
+static void ml_dbgfs_create_layout_dir(struct memlayout *ml)
 {
 	if (ml_dbgfs_create_root()) {
 		ml->d = NULL;
 		return;
 	}
-	ml_dbgfs_create_layout_assume_root(ml);
+	ml_dbgfs_create_layout_dir_assume_root(ml);
 }
 
-static int ml_dbgfs_init_root(void)
+/* Interface */
+void ml_dbgfs_memlayout_init(struct memlayout *ml)
 {
-	ml_dbgfs_create_root();
-	return 0;
-}
-
-void ml_dbgfs_init(struct memlayout *ml)
-{
+	mutex_lock(&ml_dbgfs_lock);
 	ml->seq = atomic_inc_return(&ml_seq) - 1;
-	ml_dbgfs_create_layout(ml);
+	ml_dbgfs_create_layout_dir(ml);
+	mutex_unlock(&ml_dbgfs_lock);
 }
 
-void ml_dbgfs_create_range(struct memlayout *ml, struct rangemap_entry *rme)
+void ml_dbgfs_memlayout_create_range(struct memlayout *ml, struct rangemap_entry *rme)
 {
-	char name[ML_REGION_NAME_SZ];
+	char name[ML_RANGE_NAME_SZ];
+	mutex_lock(&ml_dbgfs_lock);
 	if (ml->d)
 		_ml_dbgfs_create_range(ml->d, rme, name);
+	mutex_unlock(&ml_dbgfs_lock);
 }
 
 void ml_dbgfs_set_current(struct memlayout *ml)
 {
 	char name[ML_LAYOUT_NAME_SZ];
+	mutex_lock(&ml_dbgfs_lock);
 	_ml_dbgfs_set_current(ml, name);
+	mutex_unlock(&ml_dbgfs_lock);
 }
 
-void ml_destroy_dbgfs(struct memlayout *ml)
+void ml_dbgfs_memlayout_dini(struct memlayout *ml)
 {
+	mutex_lock(&ml_dbgfs_lock);
 	if (ml && ml->d)
 		debugfs_remove_recursive(ml->d);
+	mutex_unlock(&ml_dbgfs_lock);
 }
 
-static void __exit ml_dbgfs_exit(void)
+static int ml_dbgfs_create(void)
 {
+	/*
+	 * If you trigger this, make sure ml_stat_names[] (at the top of this
+	 * file) has an entry for the new enum memlayout_stat entry you added.
+	 */
+	BUILD_BUG_ON(ARRAY_SIZE(ml_stat_names) != MLSTAT_COUNT);
+
+	mutex_lock(&memlayout_lock);
+	mutex_lock(&ml_dbgfs_lock);
+
+	ml_dbgfs_create_root();
+	ml_dbgfs_create_layout_current();
+	mutex_unlock(&memlayout_lock);
+
+	ml_dbgfs_create_layouts_defered();
+
+	mutex_unlock(&ml_dbgfs_lock);
+	return 0;
+}
+module_init(ml_dbgfs_create);
+
+static void __exit ml_dbgfs_destroy(void)
+{
+	mutex_lock(&ml_dbgfs_lock);
 	debugfs_remove_recursive(root_dentry);
 	root_dentry = NULL;
+	mutex_unlock(&ml_dbgfs_lock);
 }
-
-module_init(ml_dbgfs_init_root);
-module_exit(ml_dbgfs_exit);
+module_exit(ml_dbgfs_destroy);
