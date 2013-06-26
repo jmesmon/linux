@@ -190,6 +190,8 @@ out:
  * the node numbering (avoid nid gaps, renumber nids to reduce the need for
  * moving pages between nodes). These changes would require cooperation between
  * this and code which manages the mapping of CPUs to nodes.
+ *
+ * 3) we could merge adjacent ranges with the same nid.
  */
 static void memlayout_expand(struct memlayout *ml)
 {
