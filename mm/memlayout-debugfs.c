@@ -18,6 +18,9 @@ static const char *ml_stat_names[] = {
 	"no-zonelist-rebuild",
 	"pcp-setup",
 	"pcp-update",
+
+	"pcp-drain",
+	"split-pages",
 };
 
 /* nests inside of memlayout_lock */
@@ -50,7 +53,7 @@ void ml_backlog_feed(struct memlayout *ml)
 	}
 
 	if (backlog_ct + 1 < backlog_max) {
-		list_add_tail(&ml_backlog, &ml->list);
+		list_add_tail(&ml->list, &ml_backlog);
 		backlog_ct++;
 	} else
 		memlayout_destroy(ml);
@@ -331,6 +334,7 @@ void ml_dbgfs_memlayout_init(struct memlayout *ml)
 	mutex_lock(&ml_dbgfs_lock);
 	ml->seq = atomic_inc_return(&ml_seq) - 1;
 	ml_dbgfs_create_layout_dir(ml);
+	memset(ml->stats, 0, sizeof(ml->stats));
 	mutex_unlock(&ml_dbgfs_lock);
 }
 
@@ -364,7 +368,8 @@ static int ml_dbgfs_create(void)
 {
 	/*
 	 * If you trigger this, make sure ml_stat_names[] (at the top of this
-	 * file) has an entry for the new enum memlayout_stat entry you added.
+	 * file) has an entry for the new enum memlayout_stat (MLSTAT_*) entry
+	 * you added.
 	 */
 	BUILD_BUG_ON(ARRAY_SIZE(ml_stat_names) != MLSTAT_COUNT);
 
