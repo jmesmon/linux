@@ -251,10 +251,9 @@ static void __ref add_free_page_to_node(struct memlayout *ml,
 	dnuma_add_page_to_new_zone(page, order, dest_zone, dest_nid);
 	return_pages_to_zone(page, order, dest_zone);
 	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST, ml, order);
-
 }
 
-#ifdef CONFIG_DNUMA_STRICT_NODE_BOUNDS
+#ifdef CONFIG_DNUMA_STRICT_BOUNDS
 static void add_split_pages_to_zones(
 		struct memlayout *ml,
 		struct rangemap_entry *first_rme,
@@ -282,7 +281,6 @@ static void add_split_pages_to_zones(
 	}
 }
 #endif
-
 
 /*
  * Callers must hold lock_memory_hotplug() for stability of present_pages,
@@ -379,20 +377,21 @@ static void update_page_counts(struct memlayout *new_ml)
 			zone->present_pages = counts[idx].present_pages;
 			nid_present += zone->present_pages;
 
-			if (need_init_pageset) {
-				setup_zone_pageset();
-				ml_stat_inc(MLSTAT_PCP_SETUP, ml);
+			if (need_init_pageset
+					&& zone_pageset_can_be_setup(zone)) {
+				setup_zone_pageset(zone);
+				ml_stat_inc(MLSTAT_PCP_SETUP, new_ml);
 			} else {
 				/*
 				 * recalculate pcp ->batch & ->high using
 				 * zone->managed_pages
 				 */
 				zone_pcp_update(zone);
-				ml_stat_inc(MLSTAT_PCP_UPDATE, ml);
+				ml_stat_inc(MLSTAT_PCP_UPDATE, new_ml);
 			}
 		}
 
-		/* FIXME: there are other states that need fixing up */
+		/* FIXME: there are other states that need setting/clearing */
 		if (!node_state(nid, N_MEMORY))
 			node_set_state(nid, N_MEMORY);
 
@@ -406,13 +405,13 @@ static void update_page_counts(struct memlayout *new_ml)
 
 
 	if (need_zonelists_rebuild) {
-		ml_stat_inc(MLSTAT_ZONELIST_REBUILD, ml);
+		ml_stat_inc(MLSTAT_ZONELIST_REBUILD, new_ml);
 
 		mutex_lock(&zonelists_mutex);
 		build_all_zonelists(NULL, NULL);
 		mutex_unlock(&zonelists_mutex);
 	} else
-		ml_stat_inc(MLSTAT_NO_ZONELIST_REBUILD, ml);
+		ml_stat_inc(MLSTAT_NO_ZONELIST_REBUILD, new_ml);
 
 	kfree(counts);
 }
@@ -531,8 +530,8 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 					last_pfn_in_page,
 					pfn_start, pfn_end,
 					RME_EXP(old), RME_EXP(new));
-
-#ifdef CONFIG_DNUMA_STRICT_NODE_BOUNDS
+			ml_stat_add(MLSTAT_SPLIT_PAGES, ml, order);
+#ifdef CONFIG_DNUMA_STRICT_BOUNDS
 			remove_free_pages_from_zone(old_zone, page, order);
 
 			spin_unlock_irqrestore(&old_zone->lock, flags);
