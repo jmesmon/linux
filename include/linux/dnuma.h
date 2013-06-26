@@ -45,7 +45,6 @@ static inline int dnuma_page_needs_move(struct page *page)
 	return dnuma_page_needs_move_lookup(page);
 }
 
-void dnuma_post_free_to_new_zone(int order);
 void dnuma_add_page_to_new_zone(struct page *page, int order,
 				struct zone *dest_zone,
 				int dest_nid);
@@ -57,11 +56,6 @@ static inline void lookup_node_flags_free(struct mem_section *ms)
 static inline void dnuma_add_page_to_new_zone(struct page *page, int order,
 				struct zone *dest_zone,
 				int dest_nid)
-{
-	BUG();
-}
-
-static inline void dnuma_post_free_to_new_zone(int order)
 {
 	BUG();
 }
