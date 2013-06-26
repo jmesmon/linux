@@ -234,11 +234,6 @@ static void remove_free_pages_from_zone(struct zone *zone, struct page *page,
 	lookup_node_clear_order(page, order);
 }
 
-void dnuma_post_free_to_new_zone(int order)
-{
-	ml_stat_add(MLSTAT_TRANSPLANT_ON_FREE, NULL, order);
-}
-
 /*
  * __ref is to allow (__meminit) zone_pcp_update(), which we will have because
  * DYNAMIC_NUMA depends on MEMORY_HOTPLUG (and MEMORY_HOTPLUG makes __meminit a
