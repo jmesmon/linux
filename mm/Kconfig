@@ -194,6 +194,16 @@ config DYNAMIC_NUMA
 	 Choose Y if you have are running linux under a hypervisor that uses
 	 this feature, otherwise choose N if unsure.
 
+config DNUMA_STRICT_BOUNDS
+	bool "Strictly enforce numa node boundaries when they divide high-order pages"
+	depends on DYNAMIC_NUMA
+	default y
+	help
+	 Enabling this option causes a memory layout to be exactly obeyed.
+	 Disabling it means that some of the boundaries between nodes may shift up temporarily.
+
+	 Choose Y if you are unsure.
+
 config DNUMA_DEBUGFS
 	bool "Export DNUMA & memlayout internals via debugfs"
 	depends on DYNAMIC_NUMA
@@ -206,13 +216,11 @@ config DNUMA_DEBUGFS
 	 If you are not debugging Dynamic NUMA or memlayout, choose N.
 
 config DNUMA_BACKLOG
-	int "Number of old memlayouts to keep (0 = None, -1 = unlimited)"
+	int "default number of old memlayouts to keep"
 	depends on DNUMA_DEBUGFS
 	help
-	 Allows access to old memory layouts & statistics in debugfs.
-
-	 Each memlayout will consume some memory, and when set to -1
-	 (unlimited), this can result in unbounded kernel memory use.
+	 Sets the default value of memlayout_debugfs.backlog_max, which limits
+	 the backlog of memlayouts kept for debugging purposes.
 
 config DNUMA_DEBUGFS_WRITE
 	bool "Change NUMA layout via debugfs"
