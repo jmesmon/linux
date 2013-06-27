@@ -762,7 +762,7 @@ static void free_one_page_to_new_zone(struct zone *zone, struct page *page,
 	__free_one_page(page, zone, order, migratetype);
 	if (!is_migrate_isolate(migratetype))
 		__mod_zone_freepage_state(zone, 1 << order, migratetype);
-	dnuma_post_free_to_new_zone(order);
+	ml_stat_add(MLSTAT_TRANSPLANT_ON_FREE, NULL, order);
 	spin_unlock(&zone->lock);
 }
 
