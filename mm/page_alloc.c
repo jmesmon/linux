@@ -702,7 +702,8 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 			if (likely(!is_migrate_isolate_page(page))) {
 				__inc_zone_state(zone, NR_FREE_PAGES);
 				if (is_migrate_cma(mt))
-					__inc_zone_state(zone, NR_FREE_CMA_PAGES);
+					__inc_zone_state(zone,
+							NR_FREE_CMA_PAGES);
 			}
 		} while (--to_free && --batch_free && !list_empty(list));
 	}
