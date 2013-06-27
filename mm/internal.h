@@ -104,6 +104,7 @@ void return_pages_to_zone(struct page *page, unsigned int order,
 			  struct zone *zone);
 #endif
 void __meminit setup_zone_pageset(struct zone *zone);
+bool zone_pageset_can_be_setup(struct zone *zone);
 
 #ifdef CONFIG_MEMORY_HOTPLUG
 /*
