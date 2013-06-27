@@ -467,13 +467,8 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		lookup_node_mark_pfn(pfn);
 		page = pfn_to_page(pfn);
 
-		/* XXX: is this safe? (consider when reserved pages become
-		 * !reserved, and when/how their page flags are changed). */
 		if (PageReserved(page)) {
-			struct zone *old_zone = page_zone(page);
-			set_page_node(page, range_nid);
-			old_zone->present_pages--;
-			page_zone(page)->present_pages++;
+			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_RESERVED, ml);
 			continue;
 		}
 
