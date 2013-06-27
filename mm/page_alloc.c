@@ -715,9 +715,10 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		VM_BUG_ON(page->mapping);
 
 		spin_lock(&dest_zone->lock);
+		VM_BUG_ON(dest_zone == page_zone(page));
+
 		dest_zone->all_unreclaimable = 0;
 		dest_zone->pages_scanned = 0;
-		VM_BUG_ON(dest_zone == page_zone(page));
 
 		dnuma_add_page_to_new_zone(page, 0, dest_zone, dest_nid);
 		list_del(&page->lru);
@@ -725,11 +726,12 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		__free_one_page(page, dest_zone, 0, mt);
 		trace_mm_page_pcpu_drain(page, 0, mt);
 		if (likely(!is_migrate_isolate_page(page))) {
-			__mod_zone_page_state(dest_zone, NR_FREE_PAGES, 1);
+			__inc_zone_state(dest_zone, NR_FREE_PAGES);
 			if (is_migrate_cma(mt))
-				__mod_zone_page_state(dest_zone, NR_FREE_CMA_PAGES, 1);
+				__inc_zone_state(dest_zone, NR_FREE_CMA_PAGES);
 		}
-		dnuma_post_free_to_new_zone(0);
+		ml_stat_inc(MLSTAT_PCP_DRAIN, NULL);
+		ml_stat_inc(MLSTAT_TRANSPLANT_ON_FREE, NULL);
 
 		spin_unlock(&dest_zone->lock);
 	}
