@@ -172,22 +172,27 @@ static struct rangemap_entry *advance_rme(struct rangemap_entry *rme,
  * Note that this iteration assumes that memlayouts are contiguous, and have
  * the same minimal and maximal pfn.
  */
+#define memlayout_for_each(ml_new, ml_old, rme_new, rme_old, \
+		range_start_pfn, range_end_pfn)	\
+	for ((rme_new) = rme_first(ml_new), \
+		(rme_old) = rme_first(ml_old),\
+		range_start_pfn = min((rme_new)->pfn_start, (rme_old)->pfn_start); \
+		\
+		((rme_old) && (rme_new)) ? \
+		(range_end_pfn = min((rme_new)->pfn_end, (rme_old)->pfn_end), 1) : \
+		(0);\
+		\
+		(range_start_pfn) = (range_end_pfn) + 1, \
+		(void)(((rme_new) = advance_rme(rme_new, range_start_pfn)) && \
+		((rme_old) = advance_rme(rme_old, range_start_pfn))))
+
 #define memlayout_for_each_delta(ml_new, ml_old, rme_new, rme_old, \
 		range_start_pfn, range_end_pfn) \
-for ((rme_new) = rme_first(ml_new), \
-	(rme_old) = rme_first(ml_old),\
-	range_start_pfn = min((rme_new)->pfn_start, (rme_old)->pfn_start); \
-	\
-	((rme_old) && (rme_new)) ? \
-	(range_end_pfn = min((rme_new)->pfn_end, (rme_old)->pfn_end), 1) : \
-	(0);\
-	\
-	(range_start_pfn) = (range_end_pfn) + 1, \
-	(void)(((rme_new) = advance_rme(rme_new, range_start_pfn)) && \
-	((rme_old) = advance_rme(rme_old, range_start_pfn)))) \
-	if ((rme_new)->nid == (rme_old)->nid) { \
-		/* do nothing, avoid trailing else */ \
-	} else
+	memlayout_for_each(ml_new, ml_old, rme_new, rme_old, range_start_pfn, range_end_pfn)\
+		if ((rme_new)->nid == (rme_old)->nid) { \
+			/* do nothing, avoid trailing else */ \
+		} else
+
 
 void dnuma_online_required_nodes_and_zones(struct memlayout *old_ml,
 		struct memlayout *new_ml)
