@@ -103,6 +103,7 @@ extern bool is_free_buddy_page(struct page *page);
 void return_pages_to_zone(struct page *page, unsigned int order,
 			  struct zone *zone);
 #endif
+void __meminit setup_zone_pageset(struct zone *zone);
 
 #ifdef CONFIG_MEMORY_HOTPLUG
 /*
