@@ -217,8 +217,10 @@ void __mod_zone_page_state(struct zone *zone, enum zone_stat_item item,
 	x = delta + __this_cpu_read(*p);
 
 	t = __this_cpu_read(pcp->stat_threshold);
+#if 0
 	if (abs(delta) > 2)
 		pr_info("delta = %5d, thresh = %ld, x = %5ld cpu = %d zone = %s nid = %d\n", delta, t, x, smp_processor_id(), zone->name, zone->node);
+#endif
 
 	if (unlikely(x > t || x < -t)) {
 		zone_page_state_add(x, zone, item);
