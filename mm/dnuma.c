@@ -272,15 +272,18 @@ static void add_split_pages_to_zones(
 	 * anyway.
 	 */
 	for (i = 0; i < (1 << order); i++) {
-		unsigned long pfn = page_to_pfn(page);
+		unsigned long pfn = page_to_pfn(page + i);
 		int nid;
 		while (rme && pfn > rme->pfn_end)
 			rme = rme_next(rme);
 
 		if (rme && pfn >= rme->pfn_start)
 			nid = rme->nid;
-		else
+		else {
+			WARN(1, "last rme: "RME_FMT"; pfn: %05lx\n",
+					RME_EXP(rme), pfn);
 			nid = page_to_nid(page + i);
+		}
 
 		add_free_page_to_node(ml, nid, page + i, 0);
 	}
