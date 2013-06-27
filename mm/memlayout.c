@@ -297,7 +297,7 @@ void memlayout_commit(struct memlayout *ml)
 
 	dnuma_move_free_pages(old_ml, ml);
 
-	/* All new _non pcp_ page allocations now match the memlayout*/
+	/* All new _non pcp_ page allocations now match the memlayout */
 	drain_all_pages();
 	/* All new page allocations now match the memlayout */
 
