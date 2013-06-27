@@ -21,6 +21,11 @@ static const char *ml_stat_names[] = {
 
 	"pcp-drain",
 	"split-pages",
+
+	"transplant-bail-reserved",
+	"transplant-bail-nid-eq",
+	"transplant-bail-page-not-buddy",
+	"transplant-bail-already-done",
 };
 
 /* nests inside of memlayout_lock */
