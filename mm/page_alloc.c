@@ -4263,9 +4263,15 @@ static void __meminit zone_pageset_init(struct zone *zone, int cpu)
 	pageset_set_high_and_batch(zone, pcp);
 }
 
+bool zone_pageset_can_be_setup(struct zone *zone)
+{
+	return zone->pageset == NULL || zone->pageset == &boot_pageset;
+}
+
 void __meminit setup_zone_pageset(struct zone *zone)
 {
 	int cpu;
+	VM_BUG_ON(!zone_pageset_can_be_setup(zone));
 	zone->pageset = alloc_percpu(struct per_cpu_pageset);
 	for_each_possible_cpu(cpu)
 		zone_pageset_init(zone, cpu);
