@@ -262,17 +262,17 @@ static void __ref add_free_page_to_node(struct memlayout *ml,
 static void add_split_pages_to_zones(
 		struct memlayout *ml,
 		struct rangemap_entry *first_rme,
-		struct page *page, int order)
+		unsigned long base_pfn, int order)
 {
-	int i;
 	struct rangemap_entry *rme = first_rme;
+	unsigned long pfn;
 	/*
 	 * We avoid doing any hard work to try to split the pages optimally
 	 * here because the page allocator splits them into 0-order pages
 	 * anyway.
 	 */
-	for (i = 0; i < (1 << order); i++) {
-		unsigned long pfn = page_to_pfn(page + i);
+	for (pfn = base_pfn; pfn < base_pfn + (1 << order); pfn++) {
+		struct page *page = pfn_to_page(pfn);
 		int nid;
 		while (rme && pfn > rme->pfn_end)
 			rme = rme_next(rme);
@@ -282,10 +282,10 @@ static void add_split_pages_to_zones(
 		else {
 			WARN(1, "last rme: "RME_FMT"; pfn: %05lx\n",
 					RME_EXP(rme), pfn);
-			nid = page_to_nid(page + i);
+			nid = page_to_nid(page);
 		}
 
-		add_free_page_to_node(ml, nid, page + i, 0);
+		add_free_page_to_node(ml, nid, page, 0);
 	}
 }
 #endif
@@ -557,7 +557,7 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 			 * rme's twice (once in add_split_pages_to_zones() and
 			 * once in the function that calls this one)
 			 */
-			add_split_pages_to_zones(ml, new, page, order);
+			add_split_pages_to_zones(ml, new, pfn, order);
 			return last_pfn_in_page;
 #endif
 		}
