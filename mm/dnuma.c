@@ -575,6 +575,15 @@ skip_unlock_old:
 	return pfn - 1;
 }
 
+/*
+ * move pages that are free to the node indicated by new_ml.
+ *
+ * we only examine pages whose node has changed since the previous memlayout,
+ * as the pages which differ from earlier memlayouts will
+ *  1) have been moved by earlier invocations of this function OR
+ *  2) have been moved on free by examining and clearing the lookup mark OR
+ *  3) still have their lookup mark set and still be allocated
+ */
 void __ref dnuma_move_free_pages(struct memlayout *old_ml,
 				 struct memlayout *new_ml)
 {
