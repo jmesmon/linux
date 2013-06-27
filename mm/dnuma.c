@@ -597,7 +597,7 @@ void __ref dnuma_move_free_pages(struct memlayout *old_ml,
 
 	update_page_counts(new_ml);
 
-	memlayout_for_each_delta(old_ml, new_ml, old, new, start_pfn, end_pfn)
+	memlayout_for_each(old_ml, new_ml, old, new, start_pfn, end_pfn)
 		end_pfn = dnuma_transplant_pfn_range(new_ml, &n, start_pfn, end_pfn,
 						     old, new);
 
