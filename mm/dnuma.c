@@ -64,9 +64,10 @@ static void lookup_node_clear_pfn(unsigned long pfn)
  */
 static void lookup_node_clear_order(struct page *page, int order)
 {
-	int i;
-	for (i = 0; i < 1UL << order; i++)
-		lookup_node_clear_pfn(page_to_pfn(page + i));
+	unsigned long base_pfn = page_to_pfn(page);
+	unsigned long pfn;
+	for (pfn = base_pfn; pfn < base_pfn + (1UL << order); pfn++)
+		lookup_node_clear_pfn(pfn);
 }
 
 /*
@@ -212,17 +213,17 @@ void dnuma_add_page_to_new_zone(struct page *page, int order,
 				  struct zone *dest_zone,
 				  int dest_nid)
 {
-	int i;
 	unsigned long pfn = page_to_pfn(page);
+	unsigned long pfn_base = pfn;
 
 	grow_pgdat_and_zone(dest_zone, pfn, pfn + (1UL << order));
 
-	for (i = 0; i < 1UL << order; i++)
-		set_page_node(&page[i], dest_nid);
+	for (; pfn < pfn_base + (1UL << order); pfn++)
+		set_page_node(pfn_to_page(pfn), dest_nid);
 }
 
 /*
- * must be called with zone->lock held (and local irq disabled) and,
+ * must be called with zone->lock held (and local irq disabled) and
  * memlayout's update_lock held
  */
 static void remove_free_pages_from_zone(struct zone *zone, struct page *page,
@@ -252,13 +253,17 @@ static void __ref add_free_page_to_node(struct memlayout *ml,
 
 	VM_BUG_ON(!zone_is_initialized(dest_zone));
 
-	/* Add page to new zone */
 	dnuma_add_page_to_new_zone(page, order, dest_zone, dest_nid);
 	return_pages_to_zone(page, order, dest_zone);
 	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST, ml, order);
 }
 
 #ifdef CONFIG_DNUMA_STRICT_BOUNDS
+/*
+ * We avoid doing any hard work to try to split the pages optimally
+ * here because the page allocator splits them into 0-order pages
+ * anyway.
+ */
 static void add_split_pages_to_zones(
 		struct memlayout *ml,
 		struct rangemap_entry *first_rme,
@@ -266,11 +271,6 @@ static void add_split_pages_to_zones(
 {
 	struct rangemap_entry *rme = first_rme;
 	unsigned long pfn;
-	/*
-	 * We avoid doing any hard work to try to split the pages optimally
-	 * here because the page allocator splits them into 0-order pages
-	 * anyway.
-	 */
 	for (pfn = base_pfn; pfn < base_pfn + (1 << order); pfn++) {
 		struct page *page = pfn_to_page(pfn);
 		int nid;
