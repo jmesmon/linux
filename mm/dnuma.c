@@ -475,22 +475,32 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		zone_num = page_zonenum(page);
 
 		/*
-		 * If this is _not_ the new nid, it could change to the new nid
-		 * at any point (from our perspective here). If we find that it
-		 * is already the the new nid, the free path fixed or is
-		 * currently fixing it up, so skip.
+		 * Only one transision of the page nid is possible:
+		 * old nid -> range_nid
+		 * Once at range_nid, no further transisions can occur (until
+		 * the memlayout_lock is unlocked).
+		 *
+		 * We don't need to check PageBuddy ? pfn += page_order : 1
+		 * because we will simply skip future pages in the same
+		 * higher-order-page via the !PageBuddy() check below, and via
+		 * this check repeated (pages that form a higher order page
+		 * will all have the same nid & zone).
 		 */
 		page_nid = page_to_nid(page);
-		if (page_nid == range_nid)
+		if (page_nid == range_nid) {
+			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_NID_EQ, ml);
 			continue;
+		}
 
 		old_zone = nid_zone(page_nid,  zone_num);
 		new_zone = nid_zone(range_nid, zone_num);
 
 		lock_both_zones(old_zone, new_zone, &flags);
 
-		if (!PageBuddy(page))
+		if (!PageBuddy(page)) {
+			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_PAGE_NOT_BUDDY, ml);
 			goto skip_unlock;
+		}
 
 		/*
 		 * It has already been transplanted "somewhere", somewhere
@@ -500,6 +510,7 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		 */
 		if (page_zone(page) != old_zone) {
 			WARN_ON(page_zone(page) != new_zone);
+			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_ALREADY_DONE, ml);
 			goto skip_unlock;
 		}
 
