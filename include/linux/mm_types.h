@@ -8,6 +8,7 @@
 #include <linux/spinlock.h>
 #include <linux/rbtree.h>
 #include <linux/rwsem.h>
+#include <linux/stacktrace.h>
 #include <linux/completion.h>
 #include <linux/cpumask.h>
 #include <linux/page-debug-flags.h>
@@ -180,7 +181,8 @@ struct page {
 #ifdef CONFIG_PAGE_OWNER
 	int order;
 	unsigned int gfp_mask;
-	unsigned long trace[8];
+	struct stack_trace trace;
+	unsigned long trace_entries[8];
 #endif
 }
 /*

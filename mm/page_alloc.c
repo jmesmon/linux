@@ -2261,62 +2261,21 @@ __perform_reclaim(gfp_t gfp_mask, unsigned int order, struct zonelist *zonelist,
 	return progress;
 }
 
-#ifdef CONFIG_PAGE_OWNER
-static inline int valid_stack_ptr(struct thread_info *tinfo, void *p)
-{
-	return	p > (void *)tinfo &&
-		p < (void *)tinfo + THREAD_SIZE - 3;
-}
-
-static inline void __stack_trace(struct page *page, unsigned long *stack,
-			unsigned long bp)
-{
-	int i = 0;
-	unsigned long addr;
-	struct thread_info *tinfo = (struct thread_info *)
-		((unsigned long)stack & (~(THREAD_SIZE - 1)));
-
-	memset(page->trace, 0, sizeof(long) * 8);
-
-#ifdef CONFIG_FRAME_POINTER
-	if (bp) {
-		while (valid_stack_ptr(tinfo, (void *)bp)) {
-			addr = *(unsigned long *)(bp + sizeof(long));
-			page->trace[i] = addr;
-			if (++i >= 8)
-				break;
-			bp = *(unsigned long *)bp;
-		}
-		return;
-	}
-#endif /* CONFIG_FRAME_POINTER */
-	while (valid_stack_ptr(tinfo, stack)) {
-		addr = *stack++;
-		if (__kernel_text_address(addr)) {
-			page->trace[i] = addr;
-			if (++i >= 8)
-				break;
-		}
-	}
-}
-
 static void set_page_owner(struct page *page, unsigned int order,
 			unsigned int gfp_mask)
 {
-	unsigned long address;
-	unsigned long bp = 0;
-#ifdef CONFIG_X86_64
-	asm ("movq %%rbp, %0" : "=r" (bp) : );
-#endif
-#ifdef CONFIG_X86_32
-	asm ("movl %%ebp, %0" : "=r" (bp) : );
-#endif
+#ifdef CONFIG_PAGE_OWNER
+	struct stack_trace *trace = &page->trace;
+	trace->nr_entries = 0;
+	trace->max_entries = ARRAY_SIZE(page->trace_entries);
+	trace->entries = &page->trace_entries[0];
+	trace->skip = 3;
+	save_stack_trace(&page->trace);
+
 	page->order = (int) order;
 	page->gfp_mask = gfp_mask;
-	__stack_trace(page, &address, bp);
-}
 #endif /* CONFIG_PAGE_OWNER */
-
+}
 
 /* The really slow allocator path where we enter direct reclaim */
 static inline struct page *
@@ -2353,10 +2312,8 @@ retry:
 		goto retry;
 	}
 
-#ifdef CONFIG_PAGE_OWNER
 	if (page)
 		set_page_owner(page, order, gfp_mask);
-#endif
 	return page;
 }
 
@@ -2650,10 +2607,8 @@ nopage:
 	warn_alloc_failed(gfp_mask, order, NULL);
 	return page;
 got_pg:
-#ifdef CONFIG_PAGE_OWNER
 	if (page)
 		set_page_owner(page, order, gfp_mask);
-#endif
 	if (kmemcheck_enabled)
 		kmemcheck_pagealloc_alloc(page, order, gfp_mask);
 
@@ -2743,10 +2698,8 @@ out:
 
 	memcg_kmem_commit_charge(page, memcg, order);
 
-#ifdef CONFIG_PAGE_OWNER
 	if (page)
 		set_page_owner(page, order, gfp_mask);
-#endif
 
 	return page;
 }
