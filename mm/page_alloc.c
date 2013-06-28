@@ -2261,8 +2261,8 @@ __perform_reclaim(gfp_t gfp_mask, unsigned int order, struct zonelist *zonelist,
 	return progress;
 }
 
-static void set_page_owner(struct page *page, unsigned int order,
-			unsigned int gfp_mask)
+static void
+set_page_owner(struct page *page, unsigned int order, gfp_t gfp_mask)
 {
 #ifdef CONFIG_PAGE_OWNER
 	struct stack_trace *trace = &page->trace;

@@ -180,7 +180,7 @@ struct page {
 #endif
 #ifdef CONFIG_PAGE_OWNER
 	int order;
-	unsigned int gfp_mask;
+	gfp_t gfp_mask;
 	struct stack_trace trace;
 	unsigned long trace_entries[8];
 #endif
