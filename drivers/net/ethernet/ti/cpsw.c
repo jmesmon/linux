@@ -35,6 +35,7 @@
 #include <linux/if_vlan.h>
 
 #include <linux/platform_data/cpsw.h>
+#include <linux/pinctrl/consumer.h>
 
 #include "cpsw_ale.h"
 #include "cpts.h"
@@ -1554,6 +1555,8 @@ static int cpsw_probe_dt(struct cpsw_platform_data *data,
 		if (mac_addr)
 			memcpy(slave_data->mac_addr, mac_addr, ETH_ALEN);
 
+		slave_data->phy_if = of_get_phy_mode(slave_node);
+
 		if (data->dual_emac) {
 			if (of_property_read_u32(slave_node, "dual_emac_res_vlan",
 						 &prop)) {
@@ -1688,6 +1691,9 @@ static int cpsw_probe(struct platform_device *pdev)
 	 * This may be required here for child devices.
 	 */
 	pm_runtime_enable(&pdev->dev);
+
+	/* Select default pin state */
+	pinctrl_pm_select_default_state(&pdev->dev);
 
 	if (cpsw_probe_dt(&priv->data, pdev)) {
 		pr_err("cpsw: platform data missing\n");
@@ -1940,7 +1946,6 @@ static int cpsw_remove(struct platform_device *pdev)
 	struct cpsw_priv *priv = netdev_priv(ndev);
 	int i;
 
-	platform_set_drvdata(pdev, NULL);
 	if (priv->data.dual_emac)
 		unregister_netdev(cpsw_get_slave_ndev(priv, 1));
 	unregister_netdev(ndev);
@@ -1981,6 +1986,9 @@ static int cpsw_suspend(struct device *dev)
 	soft_reset("sliver 1", &priv->slaves[1].sliver->soft_reset);
 	pm_runtime_put_sync(&pdev->dev);
 
+	/* Select sleep pin state */
+	pinctrl_pm_select_sleep_state(&pdev->dev);
+
 	return 0;
 }
 
@@ -1990,6 +1998,10 @@ static int cpsw_resume(struct device *dev)
 	struct net_device	*ndev = platform_get_drvdata(pdev);
 
 	pm_runtime_get_sync(&pdev->dev);
+
+	/* Select default pin state */
+	pinctrl_pm_select_default_state(&pdev->dev);
+
 	if (netif_running(ndev))
 		cpsw_ndo_open(ndev);
 	return 0;

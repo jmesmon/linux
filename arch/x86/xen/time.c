@@ -14,6 +14,7 @@
 #include <linux/kernel_stat.h>
 #include <linux/math64.h>
 #include <linux/gfp.h>
+#include <linux/slab.h>
 
 #include <asm/pvclock.h>
 #include <asm/xen/hypervisor.h>
@@ -191,32 +192,25 @@ static void xen_read_wallclock(struct timespec *ts)
 	put_cpu_var(xen_vcpu);
 }
 
-static unsigned long xen_get_wallclock(void)
+static void xen_get_wallclock(struct timespec *now)
 {
-	struct timespec ts;
-
-	xen_read_wallclock(&ts);
-	return ts.tv_sec;
+	xen_read_wallclock(now);
 }
 
-static int xen_set_wallclock(unsigned long now)
+static int xen_set_wallclock(const struct timespec *now)
 {
 	struct xen_platform_op op;
-	int rc;
 
 	/* do nothing for domU */
 	if (!xen_initial_domain())
 		return -1;
 
 	op.cmd = XENPF_settime;
-	op.u.settime.secs = now;
-	op.u.settime.nsecs = 0;
+	op.u.settime.secs = now->tv_sec;
+	op.u.settime.nsecs = now->tv_nsec;
 	op.u.settime.system_time = xen_clocksource_read();
 
-	rc = HYPERVISOR_dom0_op(&op);
-	WARN(rc != 0, "XENPF_settime failed: now=%ld\n", now);
-
-	return rc;
+	return HYPERVISOR_dom0_op(&op);
 }
 
 static struct clocksource xen_clocksource __read_mostly = {
@@ -377,11 +371,16 @@ static const struct clock_event_device xen_vcpuop_clockevent = {
 
 static const struct clock_event_device *xen_clockevent =
 	&xen_timerop_clockevent;
-static DEFINE_PER_CPU(struct clock_event_device, xen_clock_events) = { .irq = -1 };
+
+struct xen_clock_event_device {
+	struct clock_event_device evt;
+	char *name;
+};
+static DEFINE_PER_CPU(struct xen_clock_event_device, xen_clock_events) = { .evt.irq = -1 };
 
 static irqreturn_t xen_timer_interrupt(int irq, void *dev_id)
 {
-	struct clock_event_device *evt = &__get_cpu_var(xen_clock_events);
+	struct clock_event_device *evt = &__get_cpu_var(xen_clock_events).evt;
 	irqreturn_t ret;
 
 	ret = IRQ_NONE;
@@ -395,14 +394,30 @@ static irqreturn_t xen_timer_interrupt(int irq, void *dev_id)
 	return ret;
 }
 
+void xen_teardown_timer(int cpu)
+{
+	struct clock_event_device *evt;
+	BUG_ON(cpu == 0);
+	evt = &per_cpu(xen_clock_events, cpu).evt;
+
+	if (evt->irq >= 0) {
+		unbind_from_irqhandler(evt->irq, NULL);
+		evt->irq = -1;
+		kfree(per_cpu(xen_clock_events, cpu).name);
+		per_cpu(xen_clock_events, cpu).name = NULL;
+	}
+}
+
 void xen_setup_timer(int cpu)
 {
-	const char *name;
+	char *name;
 	struct clock_event_device *evt;
 	int irq;
 
-	evt = &per_cpu(xen_clock_events, cpu);
+	evt = &per_cpu(xen_clock_events, cpu).evt;
 	WARN(evt->irq >= 0, "IRQ%d for CPU%d is already allocated\n", evt->irq, cpu);
+	if (evt->irq >= 0)
+		xen_teardown_timer(cpu);
 
 	printk(KERN_INFO "installing Xen timer for CPU %d\n", cpu);
 
@@ -420,22 +435,15 @@ void xen_setup_timer(int cpu)
 
 	evt->cpumask = cpumask_of(cpu);
 	evt->irq = irq;
+	per_cpu(xen_clock_events, cpu).name = name;
 }
 
-void xen_teardown_timer(int cpu)
-{
-	struct clock_event_device *evt;
-	BUG_ON(cpu == 0);
-	evt = &per_cpu(xen_clock_events, cpu);
-	unbind_from_irqhandler(evt->irq, NULL);
-	evt->irq = -1;
-}
 
 void xen_setup_cpu_clockevents(void)
 {
 	BUG_ON(preemptible());
 
-	clockevents_register_device(&__get_cpu_var(xen_clock_events));
+	clockevents_register_device(&__get_cpu_var(xen_clock_events).evt);
 }
 
 void xen_timer_resume(void)
