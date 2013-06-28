@@ -520,6 +520,7 @@ void dput(struct dentry *dentry)
 	if (!dentry)
 		return;
 
+	WARN_ON_ONCE(!dentry->d_count);
 repeat:
 	if (dentry->d_count == 1)
 		might_sleep();
