@@ -28,27 +28,17 @@ static int max_size;
 
 struct block_list *block_head;
 
-int read_block(char *buf, FILE *fin)
+int read_block(char *buf, int buf_size, FILE *fin)
 {
-	int ret = 0;
-	int hit = 0;
-	char *curr = buf;
+	char *curr = buf, *const buf_end = buf + buf_size;
 
-	for (;;) {
-		int val = getc(fin);
-
-		if (val == EOF)
-			return -1;
-		*curr = val;
-		ret++;
-		if (*curr == '\n' && hit == 1)
-			return ret - 1;
-		else if (*curr == '\n')
-			hit = 1;
-		else
-			hit = 0;
-		curr++;
+	while (buf_end - curr > 1 && fgets(curr, buf_end - curr, fin)) {
+		if (*curr == '\n') /* empty line */
+			return curr - buf;
+		curr += strlen(curr);
 	}
+
+	return -1; /* EOF or no space left in buf. */
 }
 
 static int compare_txt(struct block_list *l1, struct block_list *l2)
@@ -85,10 +75,12 @@ static void add_list(char *buf, int len)
 	}
 }
 
+#define BUF_SIZE	1024
+
 int main(int argc, char **argv)
 {
 	FILE *fin, *fout;
-	char buf[1024];
+	char buf[BUF_SIZE];
 	int ret, i, count;
 	struct block_list *list2;
 	struct stat st;
@@ -107,11 +99,10 @@ int main(int argc, char **argv)
 	list = malloc(max_size * sizeof(*list));
 
 	for(;;) {
-		ret = read_block(buf, fin);
+		ret = read_block(buf, BUF_SIZE, fin);
 		if (ret < 0)
 			break;
 
-		buf[ret] = '\0';
 		add_list(buf, ret);
 	}
 
