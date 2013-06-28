@@ -385,10 +385,6 @@ static struct sh_eth_cpu_data r8a777x_data = {
 	.eesr_err_check	= EESR_TWB | EESR_TABT | EESR_RABT | EESR_RFE |
 			  EESR_RDE | EESR_RFRMER | EESR_TFE | EESR_TDE |
 			  EESR_ECI,
-<<<<<<< HEAD
-	.tx_error_check	= EESR_TWB | EESR_TABT | EESR_TDE | EESR_TFE,
-=======
->>>>>>> linux-next/akpm-base
 
 	.apr		= 1,
 	.mpr		= 1,
@@ -425,10 +421,6 @@ static struct sh_eth_cpu_data sh7724_data = {
 	.eesr_err_check	= EESR_TWB | EESR_TABT | EESR_RABT | EESR_RFE |
 			  EESR_RDE | EESR_RFRMER | EESR_TFE | EESR_TDE |
 			  EESR_ECI,
-<<<<<<< HEAD
-	.tx_error_check	= EESR_TWB | EESR_TABT | EESR_TDE | EESR_TFE,
-=======
->>>>>>> linux-next/akpm-base
 
 	.apr		= 1,
 	.mpr		= 1,
@@ -466,10 +458,6 @@ static struct sh_eth_cpu_data sh7757_data = {
 	.eesr_err_check	= EESR_TWB | EESR_TABT | EESR_RABT | EESR_RFE |
 			  EESR_RDE | EESR_RFRMER | EESR_TFE | EESR_TDE |
 			  EESR_ECI,
-<<<<<<< HEAD
-	.tx_error_check	= EESR_TWB | EESR_TABT | EESR_TDE | EESR_TFE,
-=======
->>>>>>> linux-next/akpm-base
 
 	.irq_flags	= IRQF_SHARED,
 	.apr		= 1,
@@ -539,11 +527,6 @@ static struct sh_eth_cpu_data sh7757_data_giga = {
 	.eesr_err_check	= EESR_TWB1 | EESR_TWB | EESR_TABT | EESR_RABT |
 			  EESR_RFE | EESR_RDE | EESR_RFRMER | EESR_TFE |
 			  EESR_TDE | EESR_ECI,
-<<<<<<< HEAD
-	.tx_error_check	= EESR_TWB1 | EESR_TWB | EESR_TABT | EESR_TDE | \
-			  EESR_TFE,
-=======
->>>>>>> linux-next/akpm-base
 	.fdr_value	= 0x0000072f,
 	.rmcr_value	= 0x00000001,
 
@@ -602,11 +585,6 @@ static struct sh_eth_cpu_data sh7734_data = {
 	.eesr_err_check	= EESR_TWB1 | EESR_TWB | EESR_TABT | EESR_RABT |
 			  EESR_RFE | EESR_RDE | EESR_RFRMER | EESR_TFE |
 			  EESR_TDE | EESR_ECI,
-<<<<<<< HEAD
-	.tx_error_check	= EESR_TWB1 | EESR_TWB | EESR_TABT | EESR_TDE | \
-			  EESR_TFE,
-=======
->>>>>>> linux-next/akpm-base
 
 	.apr		= 1,
 	.mpr		= 1,
@@ -671,11 +649,6 @@ static struct sh_eth_cpu_data r8a7740_data = {
 	.eesr_err_check	= EESR_TWB1 | EESR_TWB | EESR_TABT | EESR_RABT |
 			  EESR_RFE | EESR_RDE | EESR_RFRMER | EESR_TFE |
 			  EESR_TDE | EESR_ECI,
-<<<<<<< HEAD
-	.tx_error_check	= EESR_TWB1 | EESR_TWB | EESR_TABT | EESR_TDE | \
-			  EESR_TFE,
-=======
->>>>>>> linux-next/akpm-base
 
 	.apr		= 1,
 	.mpr		= 1,

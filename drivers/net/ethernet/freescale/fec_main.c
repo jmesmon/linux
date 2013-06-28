@@ -1451,9 +1451,6 @@ static int fec_enet_set_pauseparam(struct net_device *ndev,
 	return 0;
 }
 
-<<<<<<< HEAD
-#endif /* !defined(CONFIG_M5272) */
-=======
 static const struct fec_stat {
 	char name[ETH_GSTRING_LEN];
 	u16 offset;
@@ -1564,7 +1561,6 @@ static int fec_enet_nway_reset(struct net_device *dev)
 
 	return genphy_restart_aneg(phydev);
 }
->>>>>>> linux-next/akpm-base
 
 static const struct ethtool_ops fec_enet_ethtool_ops = {
 #if !defined(CONFIG_M5272)
@@ -2016,15 +2012,12 @@ fec_probe(struct platform_device *pdev)
 	    (pdev->id_entry->driver_data & FEC_QUIRK_HAS_GBIT))
 		fep->pause_flag |= FEC_PAUSE_FLAG_AUTONEG;
 #endif
-<<<<<<< HEAD
-=======
 
 	fep->hwp = devm_ioremap_resource(&pdev->dev, r);
 	if (IS_ERR(fep->hwp)) {
 		ret = PTR_ERR(fep->hwp);
 		goto failed_ioremap;
 	}
->>>>>>> linux-next/akpm-base
 
 	fep->pdev = pdev;
 	fep->dev_id = dev_id++;

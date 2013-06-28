@@ -2259,7 +2259,6 @@ void __cpuinit build_tlb_refill_handler(void)
 			build_r4000_tlb_refill_handler();
 	}
 }
-<<<<<<< HEAD
 
 void __cpuinit flush_tlb_handlers(void)
 {
@@ -2272,5 +2271,3 @@ void __cpuinit flush_tlb_handlers(void)
 	local_flush_icache_range((unsigned long)tlbmiss_handler_setup_pgd,
 			   (unsigned long)tlbmiss_handler_setup_pgd_end);
 }
-=======
->>>>>>> 3f90b82df110ef9cb33761b56ca85ae0d0372d4a

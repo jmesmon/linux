@@ -597,9 +597,6 @@ static void hci_init3_req(struct hci_request *req, unsigned long opt)
 	struct hci_dev *hdev = req->hdev;
 	u8 p;
 
-<<<<<<< HEAD
-	/* Only send HCI_Delete_Stored_Link_Key if it is supported */
-=======
 	/* Some Broadcom based Bluetooth controllers do not support the
 	 * Delete Stored Link Key command. They are clearly indicating its
 	 * absence in the bit mask of supported commands.
@@ -609,7 +606,6 @@ static void hci_init3_req(struct hci_request *req, unsigned long opt)
 	 * does not have actual support for stored link keys which makes this
 	 * command redundant anyway.
          */
->>>>>>> linux-next/akpm-base
 	if (hdev->commands[6] & 0x80) {
 		struct hci_cp_delete_stored_link_key cp;
 
