@@ -96,7 +96,7 @@ static void lookup_node_mark_pfn(unsigned long pfn)
 /*
  * must be called under lock_memory_hotplug()
  */
-void dnuma_online_page_range(unsigned long start_pfn, unsigned long end_pfn,
+int dnuma_online_page_range(unsigned long start_pfn, unsigned long end_pfn,
 		struct rangemap_entry *rme)
 {
 	unsigned long pfn;
@@ -141,6 +141,7 @@ void dnuma_online_page_range(unsigned long start_pfn, unsigned long end_pfn,
 				 * memlayout changes
 				 */
 				memory_notify(MEM_CANCEL_ONLINE, &arg);
+				return -ENOMEM;
 			}
 		}
 	}
@@ -156,8 +157,11 @@ void dnuma_online_page_range(unsigned long start_pfn, unsigned long end_pfn,
 		 * just be quite a few WARNS in the logs), but if we
 		 * are indicating error above, should we bail out here
 		 * as well? */
-		WARN_ON(ensure_zone_is_initialized(zone, 0, 0));
+		if (WARN_ON(ensure_zone_is_initialized(zone, 0, 0)))
+			return -ENOMEM;
 	}
+
+	return 0;
 }
 
 static struct rangemap_entry *advance_rme(struct rangemap_entry *rme,
@@ -195,14 +199,20 @@ static struct rangemap_entry *advance_rme(struct rangemap_entry *rme,
 		} else
 
 
-void dnuma_online_required_nodes_and_zones(struct memlayout *old_ml,
+int dnuma_online_required_nodes_and_zones(struct memlayout *old_ml,
 		struct memlayout *new_ml)
 {
 	struct rangemap_entry *old, *new;
 	unsigned long start_pfn, end_pfn;
+	int r;
 
-	memlayout_for_each_delta(new_ml, old_ml, new, old, start_pfn, end_pfn)
-		dnuma_online_page_range(start_pfn, end_pfn, new);
+	memlayout_for_each_delta(new_ml, old_ml, new, old, start_pfn, end_pfn) {
+		r = dnuma_online_page_range(start_pfn, end_pfn, new);
+		if (r)
+			return r;
+	}
+
+	return 0;
 }
 
 /*
