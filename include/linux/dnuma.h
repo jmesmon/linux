@@ -10,7 +10,7 @@
 
 #ifdef CONFIG_DYNAMIC_NUMA
 /* Must be called _before_ setting a new_ml to the pfn_to_node_map */
-void dnuma_online_required_nodes_and_zones(struct memlayout *old_ml,
+int dnuma_online_required_nodes_and_zones(struct memlayout *old_ml,
 		struct memlayout *new_ml);
 
 /* Must be called _after_ setting a new_ml to the pfn_to_node_map */
