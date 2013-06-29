@@ -26,6 +26,9 @@ static const char *ml_stat_names[] = {
 	"transplant-bail-nid-eq",
 	"transplant-bail-page-not-buddy",
 	"transplant-bail-already-done",
+
+	"transplant-from-freelist-remove",
+	"transplant-examined-pfn",
 };
 
 /* nests inside of memlayout_lock */
