@@ -721,14 +721,12 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 
 		dnuma_add_page_to_new_zone(page, 0, dest_zone, dest_nid);
 		list_del(&page->lru);
+
 		mt = get_freepage_migratetype(page);
 		__free_one_page(page, dest_zone, 0, mt);
 		trace_mm_page_pcpu_drain(page, 0, mt);
-		if (likely(!is_migrate_isolate_page(page))) {
-			__inc_zone_state(dest_zone, NR_FREE_PAGES);
-			if (is_migrate_cma(mt))
-				__inc_zone_state(dest_zone, NR_FREE_CMA_PAGES);
-		}
+		if (likely(!is_migrate_isolate_page(page)))
+			__mod_zone_freepage_state(dest_zone, 1, mt);
 		ml_stat_inc(MLSTAT_PCP_DRAIN, NULL);
 		ml_stat_inc(MLSTAT_TRANSPLANT_ON_FREE, NULL);
 
