@@ -405,7 +405,7 @@ int do_select(int n, fd_set_bits *fds, struct timespec *end_time)
 	int retval, i, timed_out = 0;
 	unsigned long slack = 0;
 	unsigned int ll_flag = POLL_LL;
-	u64 ll_time = ll_end_time();
+	u64 ll_time = 0;
 
 	rcu_read_lock();
 	retval = max_select_fd(n, fds);
@@ -771,7 +771,7 @@ static int do_poll(unsigned int nfds,  struct poll_list *list,
 	int timed_out = 0, count = 0;
 	unsigned long slack = 0;
 	unsigned int ll_flag = POLL_LL;
-	u64 ll_time = ll_end_time();
+	u64 ll_time = 0;
 
 	/* Optimise the no-wait case */
 	if (end_time && !end_time->tv_sec && !end_time->tv_nsec) {
