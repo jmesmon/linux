@@ -236,18 +236,20 @@ void dnuma_add_page_to_new_zone(struct page *page, int order,
  * must be called with zone->lock held (and local irq disabled) and
  * memlayout's update_lock held
  */
-static void remove_free_pages_from_zone(struct zone *zone, struct page *page,
-					int order)
+static void remove_free_page_from_zone(struct memlayout *ml, struct zone *zone,
+				       struct page *page, int order)
 {
-	/* zone free stats */
-	zone->free_area[order].nr_free--;
-	__mod_zone_freepage_state(zone, -(1UL << order),
-			get_pageblock_migratetype(page));
+	/* XXX: watermarks? */
 
 	list_del(&page->lru);
+	zone->free_area[order].nr_free--;
 	__ClearPageBuddy(page);
 
+	__mod_zone_freepage_state(zone, -(1 << order),
+			get_pageblock_migratetype(page));
+
 	lookup_node_clear_order(page, order);
+	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST_REMOVE, ml, order);
 }
 
 /*
@@ -364,7 +366,6 @@ static void update_page_counts(struct memlayout *new_ml)
 		nid = rme->nid;
 
 		idx = page_count_idx(nid, page_zonenum(page));
-		/* XXX: is locking regarding PageReserved() sufficient? */
 		if (!PageReserved(page))
 			counts[idx].managed_pages++;
 		counts[idx].present_pages++;
@@ -437,7 +438,7 @@ static void update_page_counts(struct memlayout *new_ml)
 static void lock_both_zones(struct zone *z1, struct zone *z2,
 		unsigned long *flags)
 {
-	VM_BUG_ON(z1 == z2);
+	BUG_ON(z1 == z2);
 	if (z1 > z2) {
 		spin_lock_irqsave(&z1->lock, *flags);
 		spin_lock_nested(&z2->lock, SINGLE_DEPTH_NESTING);
@@ -455,7 +456,7 @@ static void lock_both_zones(struct zone *z1, struct zone *z2,
  * - old memory layout
  * - higher order pages
  *
- * TODO: ensure this plays nice with migratetypes and isolation.
+ * TODO: ensure this plays nice with migrate types.
  */
 static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		nodemask_t *n,
@@ -464,7 +465,6 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		struct rangemap_entry *new)
 {
 	unsigned long pfn = pfn_start;
-	int range_nid = new->nid;
 	pr_devel("transplating pfn {%05lx - %05lx} from %d to %d\n", pfn_start,
 			pfn_end, old->nid, new->nid);
 
@@ -474,12 +474,20 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		int page_nid, order;
 		unsigned long flags, last_pfn_in_page, first_pfn_in_page;
 		enum zone_type zone_num;
+
+		ml_stat_inc(MLSTAT_TRANSPLANT_EXAMINED_PFN, ml);
+
 		if (!pfn_valid(pfn))
 			continue;
 
 		lookup_node_mark_pfn(pfn);
 		page = pfn_to_page(pfn);
 
+		/*
+		 * TODO: examine changing the page_zone() directly for reserved
+		 * pages They are marked, so if they ever get into the page
+		 * allocator, their zone will be corrected.
+		 */
 		if (PageReserved(page)) {
 			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_RESERVED, ml);
 			continue;
@@ -489,8 +497,8 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 
 		/*
 		 * Only one transision of the page nid is possible:
-		 * old nid -> range_nid
-		 * Once at range_nid, no further transisions can occur (until
+		 * previous nid (which may or may not be old->nid) ==> new->nid
+		 * Once at new->nid, no further transisions can occur (until
 		 * the memlayout_lock is unlocked).
 		 *
 		 * We don't need to check PageBuddy ? pfn += page_order : 1
@@ -500,16 +508,17 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		 * will all have the same nid & zone).
 		 */
 		page_nid = page_to_nid(page);
-		if (page_nid == range_nid) {
+		if (page_nid == new->nid) {
 			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_NID_EQ, ml);
 			continue;
 		}
 
 		old_zone = nid_zone(page_nid,  zone_num);
-		new_zone = nid_zone(range_nid, zone_num);
+		new_zone = nid_zone(new->nid, zone_num);
 
 		lock_both_zones(old_zone, new_zone, &flags);
 
+		/* isolated pages are also caught by this */
 		if (!PageBuddy(page)) {
 			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_PAGE_NOT_BUDDY, ml);
 			goto skip_unlock;
@@ -542,7 +551,7 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 			goto skip_unlock_old;
 		}
 
-		__node_set(range_nid, n);
+		__node_set(new->nid, n);
 
 		if (last_pfn_in_page > pfn_end) {
 			/*
@@ -556,7 +565,7 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 					RME_EXP(old), RME_EXP(new));
 			ml_stat_add(MLSTAT_SPLIT_PAGES, ml, order);
 #ifdef CONFIG_DNUMA_STRICT_BOUNDS
-			remove_free_pages_from_zone(old_zone, page, order);
+			remove_free_page_from_zone(ml, old_zone, page, order);
 
 			spin_unlock_irqrestore(&old_zone->lock, flags);
 
@@ -572,10 +581,10 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 #endif
 		}
 
-		remove_free_pages_from_zone(old_zone, page, order);
+		remove_free_page_from_zone(ml, old_zone, page, order);
 		spin_unlock_irqrestore(&old_zone->lock, flags);
 
-		add_free_page_to_node(ml, range_nid, page, order);
+		add_free_page_to_node(ml, new->nid, page, order);
 
 		pfn = last_pfn_in_page;
 		continue;
@@ -607,7 +616,7 @@ void __ref dnuma_move_free_pages(struct memlayout *old_ml,
 
 	update_page_counts(new_ml);
 
-	memlayout_for_each(old_ml, new_ml, old, new, start_pfn, end_pfn)
+	memlayout_for_each_delta(old_ml, new_ml, old, new, start_pfn, end_pfn)
 		end_pfn = dnuma_transplant_pfn_range(new_ml, &n, start_pfn, end_pfn,
 						     old, new);
 
