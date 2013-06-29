@@ -264,6 +264,7 @@ struct memlayout *memlayout_create(enum memlayout_type type)
 
 void memlayout_commit(struct memlayout *ml)
 {
+	int r;
 	struct memlayout *old_ml;
 	memlayout_expand(ml);
 
@@ -289,7 +290,12 @@ void memlayout_commit(struct memlayout *ml)
 	old_ml = rcu_dereference_protected(pfn_to_node_map,
 			mutex_is_locked(&memlayout_lock));
 
-	dnuma_online_required_nodes_and_zones(old_ml, ml);
+	r = dnuma_online_required_nodes_and_zones(old_ml, ml);
+	if (r) {
+		pr_err("bailing out of memlayout commit, could not online nodes and zones\n");
+		ml_backlog_feed(ml);
+		goto out;
+	}
 
 	rcu_assign_pointer(pfn_to_node_map, ml);
 
@@ -301,10 +307,15 @@ void memlayout_commit(struct memlayout *ml)
 	drain_all_pages();
 	/* All new page allocations now match the memlayout */
 
+	/*
+	 * Temporary, remove when hooks to update movable pages are added
+	 */
 	lru_add_drain_all();
+
 	refresh_memory_blocks(ml);
 	ml_backlog_feed(old_ml);
 
+out:
 	mutex_unlock(&memlayout_lock);
 	unlock_memory_hotplug();
 }
