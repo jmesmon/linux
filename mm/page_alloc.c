@@ -3246,6 +3246,15 @@ void show_free_areas(unsigned int filter)
 	show_swap_cache_info();
 }
 
+unsigned long nr_free_pages_in_zone(struct zone *zone)
+{
+	unsigned long ct = 0;
+	int order;
+	for (order = 0; order < MAX_ORDER; order++)
+		ct += zone->free_area[order].nr_free << order;
+	return ct;
+}
+
 static void zoneref_set_zone(struct zone *zone, struct zoneref *zoneref)
 {
 	zoneref->zone = zone;
