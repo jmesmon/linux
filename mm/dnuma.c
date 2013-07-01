@@ -447,7 +447,7 @@ static void update_page_counts(struct memlayout *new_ml)
 			}
 		}
 
-		/* FIXME: there are other states that need setting/clearing */
+		/* FIXME: there are other node_states that need setting/clearing */
 		if (!node_state(nid, N_MEMORY))
 			node_set_state(nid, N_MEMORY);
 
@@ -590,6 +590,9 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 
 		__node_set(new->nid, n);
 
+		remove_free_page_from_zone(ml, old_zone, page, order);
+		spin_unlock_irqrestore(&old_zone->lock, flags);
+
 		if (last_pfn_in_page > pfn_end) {
 			/*
 			 * this higher order page doesn't fit into the current
@@ -602,9 +605,6 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 					RME_EXP(old), RME_EXP(new));
 			ml_stat_add(MLSTAT_SPLIT_PAGES, ml, order);
 #ifdef CONFIG_DNUMA_STRICT_BOUNDS
-			remove_free_page_from_zone(ml, old_zone, page, order);
-
-			spin_unlock_irqrestore(&old_zone->lock, flags);
 
 			/*
 			 * painfully, a higher order page can extend past the
@@ -617,9 +617,6 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 			return last_pfn_in_page;
 #endif
 		}
-
-		remove_free_page_from_zone(ml, old_zone, page, order);
-		spin_unlock_irqrestore(&old_zone->lock, flags);
 
 		add_free_page_to_node(ml, new->nid, page, order);
 
