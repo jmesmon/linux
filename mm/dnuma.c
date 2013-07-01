@@ -317,6 +317,24 @@ static void add_split_pages_to_zones(
 #endif
 
 /*
+ * @zone has ->managed_pages = 0, clear the watermarks & reserves so the OOM
+ * killer doesn't go beserk when we remove all it's pages.
+ */
+static void zone_zero_wmarks_and_reserves(struct zone *zone)
+{
+	int i;
+	zone->dirty_balance_reserve = 0;
+	for (i = 0; i < MAX_NR_ZONES; i++)
+		zone->lowmem_reserve[i] = 0;
+
+	mutex_lock(&zonelists_mutex);
+	zone->watermark[WMARK_MIN] = 0;
+	zone->watermark[WMARK_LOW] = 0;
+	zone->watermark[WMARK_HIGH] = 0;
+	mutex_unlock(&zonelists_mutex);
+}
+
+/*
  * Callers must hold lock_memory_hotplug() for stability of present_pages,
  * managed_pages, and PageReserved()
  *
@@ -399,6 +417,11 @@ static void update_page_counts(struct memlayout *new_ml)
 			bool need_init_pageset = !populated_zone(zone);
 			if (need_init_pageset)
 				need_zonelists_rebuild = true;
+
+			if (counts[idx].managed_pages == 0 &&
+					zone->managed_pages != 0)
+				/* kill reserves an wmarks for this zone */
+				zone_zero_wmarks_and_reserves(zone);
 
 			pr_debug("nid %d zone %d mp=%lu pp=%lu -> mp=%lu pp=%lu\n",
 					nid, zone_num,
