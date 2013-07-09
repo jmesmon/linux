@@ -446,6 +446,48 @@ struct dentry *debugfs_create_atomic_u32(const char *name, umode_t mode,
 }
 EXPORT_SYMBOL_GPL(debugfs_create_atomic_u32);
 
+static int debugfs_atomic64_t_set(void *data, u64 val)
+{
+	atomic64_set((atomic64_t *)data, val);
+	return 0;
+}
+static int debugfs_atomic64_t_get(void *data, u64 *val)
+{
+	*val = atomic64_read((atomic64_t *)data);
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(fops_atomic64_t, debugfs_atomic64_t_get,
+			debugfs_atomic64_t_set, "%lld\n");
+DEFINE_SIMPLE_ATTRIBUTE(fops_atomic64_t_ro, debugfs_atomic64_t_get, NULL, "%lld\n");
+DEFINE_SIMPLE_ATTRIBUTE(fops_atomic64_t_wo, NULL, debugfs_atomic64_t_set, "%lld\n");
+
+/**
+ * debugfs_create_atomic_u64 - create a debugfs file that is used to read and
+ * write an atomic_t value, formated identically to debugfs_create_u64.
+ * @name: a pointer to a string containing the name of the file to create.
+ * @mode: the permission that the file should have
+ * @parent: a pointer to the parent dentry for this file.  This should be a
+ *          directory dentry if set.  If this parameter is %NULL, then the
+ *          file will be created in the root of the debugfs filesystem.
+ * @value: a pointer to the variable that the file should read to and write
+ *         from.
+ */
+struct dentry *debugfs_create_atomic_u64(const char *name, umode_t mode,
+				 struct dentry *parent, atomic64_t *value)
+{
+	/* if there are no write bits set, make read only */
+	if (!(mode & S_IWUGO))
+		return debugfs_create_file(name, mode, parent, value,
+					&fops_atomic64_t_ro);
+	/* if there are no read bits set, make write only */
+	if (!(mode & S_IRUGO))
+		return debugfs_create_file(name, mode, parent, value,
+					&fops_atomic64_t_wo);
+
+	return debugfs_create_file(name, mode, parent, value, &fops_atomic64_t);
+}
+EXPORT_SYMBOL_GPL(debugfs_create_atomic_u64);
+
 static ssize_t read_file_bool(struct file *file, char __user *user_buf,
 			      size_t count, loff_t *ppos)
 {
