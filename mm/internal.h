@@ -107,6 +107,7 @@ void __meminit setup_zone_pageset(struct zone *zone);
 bool zone_pageset_can_be_setup(struct zone *zone);
 unsigned long nr_free_pages_in_zone(struct zone *zone);
 void zone_pcp_destroy_from_mask(unsigned long *zones_emptied);
+void zone_adjust_managed_page_count(struct zone *zone, long count);
 
 #ifdef CONFIG_MEMORY_HOTPLUG
 /*
