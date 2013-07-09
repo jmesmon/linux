@@ -5,6 +5,7 @@
 #include <linux/mm.h>       /* NODE_DATA, page_zonenum */
 #include <linux/mmzone.h>   /* pfn_to_nid */
 #include <linux/rbtree.h>
+#include <linux/tracepoint.h>
 #include <linux/types.h>    /* size_t */
 
 #ifdef CONFIG_DYNAMIC_NUMA
@@ -32,7 +33,7 @@ enum memlayout_stat {
 	MLSTAT_CACHE_HIT,
 	MLSTAT_CACHE_MISS,
 	MLSTAT_TRANSPLANT_ON_FREE,
-	MLSTAT_TRANSPLANT_FROM_FREELIST,
+	MLSTAT_TRANSPLANT_FROM_FREELIST_ADD,
 
 	MLSTAT_ZONELIST_REBUILD,
 	MLSTAT_NO_ZONELIST_REBUILD,
@@ -49,6 +50,9 @@ enum memlayout_stat {
 
 	MLSTAT_TRANSPLANT_FROM_FREELIST_REMOVE,
 	MLSTAT_TRANSPLANT_EXAMINED_PFN,
+	MLSTAT_DRAIN_ZONESTAT,
+
+	MLSTAT_FUTURE_ZONE_FIXUP,
 
 	MLSTAT_COUNT
 };
@@ -79,9 +83,19 @@ struct memlayout {
 	unsigned seq;
 	struct dentry *d;
 
+	/*
+	 * XXX: This is rather large. Consider: allow building with debugfs
+	 * enabled and allow stat collection to be runtime enabled, and/or
+	 * allow building the debugfs interface as a module
+	 */
 	atomic64_t stats[MLSTAT_COUNT];
+	atomic64_t node_stats[MAX_NUMNODES][MLSTAT_COUNT];
 #endif
 };
+
+DECLARE_TRACE(mm_memlayout_cache_access,
+		TP_PROTO(struct memlayout *ml, bool hit),
+		TP_ARGS(ml, hit));
 
 /*** Global memlayout (pfn_to_node_map) operations */
 
