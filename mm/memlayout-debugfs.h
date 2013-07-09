@@ -4,8 +4,14 @@
 #include <linux/memlayout.h>
 
 #ifdef CONFIG_DNUMA_DEBUGFS
-void ml_stat_add(enum memlayout_stat stat, struct memlayout *ml, int order);
-void ml_stat_inc(enum memlayout_stat stat, struct memlayout *ml);
+/*
+ * @nid and @ml are optional
+ *
+ * IF @nid is unavaliable, pass NUMA_NO_NODE
+ * IF @ml is unavaliable, pass NULL
+ */
+void ml_stat_add(enum memlayout_stat stat, struct memlayout *ml, int nid, int order);
+void ml_stat_inc(enum memlayout_stat stat, struct memlayout *ml, int nid);
 
 void ml_dbgfs_memlayout_init(struct memlayout *ml);
 void ml_dbgfs_memlayout_create_range(struct memlayout *ml,
