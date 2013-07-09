@@ -83,14 +83,10 @@ struct memlayout {
 #endif
 };
 
+/*** Global memlayout (pfn_to_node_map) operations */
+
 extern __rcu struct memlayout *pfn_to_node_map;
 extern struct mutex memlayout_lock; /* update-side lock */
-
-/* FIXME: overflow potential in completion check */
-#define ml_for_each_pfn_in_range(rme, pfn)	\
-	for (pfn = rme->pfn_start;		\
-	     pfn <= rme->pfn_end || pfn < rme->pfn_start; \
-	     pfn++)
 
 static inline struct memlayout *memlayout_rcu_deref_if_active(void)
 {
@@ -99,6 +95,16 @@ static inline struct memlayout *memlayout_rcu_deref_if_active(void)
 		return ml;
 	return NULL;
 }
+
+int memlayout_pfn_to_nid(unsigned long pfn);
+int memlayout_pfn_to_nid_if_active(unsigned long pfn);
+
+/*** Generic memlayout operations */
+
+#define ml_for_each_pfn_in_range(rme, pfn)	\
+	for (pfn = rme->pfn_start;		\
+	     pfn <= rme->pfn_end || pfn < rme->pfn_start; \
+	     pfn++)
 
 static inline bool rme_bounds_pfn(struct rangemap_entry *rme, unsigned long pfn)
 {
@@ -142,10 +148,10 @@ void memlayout_destroy_mem(struct memlayout *ml);
 
 int memlayout_new_range(struct memlayout *ml,
 		unsigned long pfn_start, unsigned long pfn_end, int nid);
-int memlayout_pfn_to_nid(unsigned long pfn);
-int memlayout_pfn_to_nid_if_active(unsigned long pfn);
+
 struct rangemap_entry *memlayout_pfn_to_rme(struct memlayout *ml,
 					    unsigned long pfn);
+int _memlayout_pfn_to_nid(struct memlayout *ml, unsigned long pfn);
 
 /*
  * Put ranges added by memlayout_new_range() into use by
@@ -156,7 +162,7 @@ struct rangemap_entry *memlayout_pfn_to_rme(struct memlayout *ml,
 void memlayout_commit(struct memlayout *ml);
 
 /*
- * Sets up an inital memlayout in early boot.
+ * Set up an inital memlayout in early boot.
  * A weak default which uses memblock is provided.
  */
 void memlayout_global_init(void);
