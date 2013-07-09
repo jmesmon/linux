@@ -196,9 +196,9 @@ struct dentry *fault_create_debugfs_attr(const char *name,
 		goto fail;
 	if (!debugfs_create_ul("interval", mode, dir, &attr->interval))
 		goto fail;
-	if (!debugfs_create_atomic_t("times", mode, dir, &attr->times))
+	if (!debugfs_create_atomic_u32("times", mode, dir, &attr->times))
 		goto fail;
-	if (!debugfs_create_atomic_t("space", mode, dir, &attr->space))
+	if (!debugfs_create_atomic_u32("space", mode, dir, &attr->space))
 		goto fail;
 	if (!debugfs_create_ul("verbose", mode, dir, &attr->verbose))
 		goto fail;
