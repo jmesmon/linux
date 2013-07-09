@@ -971,6 +971,23 @@ static inline int zonelist_node_idx(struct zoneref *zoneref)
 #endif /* CONFIG_NUMA */
 }
 
+#define MAX_ZONES (nr_node_ids * MAX_NR_ZONES)
+
+/*
+ * The calculated position is designed for managing a bitmap of all zones on
+ * the system.
+ */
+static inline int zone_to_zone_pos(struct zone *zone)
+{
+	return zone->node * MAX_NR_ZONES + zone_idx(zone);
+}
+
+static inline struct zone *zone_pos_to_zone(int pos)
+{
+	return &NODE_DATA(pos / MAX_NR_ZONES)->node_zones[pos % MAX_NR_ZONES];
+}
+
+
 /**
  * next_zones_zonelist - Returns the next zone at or below highest_zoneidx within the allowed nodemask using a cursor within a zonelist as a starting point
  * @z - The cursor used as a starting point for the search
