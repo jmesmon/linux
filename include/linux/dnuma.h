@@ -14,7 +14,7 @@ int dnuma_online_required_nodes_and_zones(struct memlayout *old_ml,
 		struct memlayout *new_ml);
 
 /* Must be called _after_ setting a new_ml to the pfn_to_node_map */
-void dnuma_move_free_pages(struct memlayout *old_ml, struct memlayout *new_ml);
+int dnuma_move_free_pages(struct memlayout *old_ml, struct memlayout *new_ml);
 
 static inline void lookup_node_flags_free(struct mem_section *ms)
 {
@@ -32,6 +32,8 @@ static inline bool lookup_node_test_clear_pfn(unsigned long pfn)
 
 	return test_and_clear_bit(pfn - first_pfn_in_sec, ms->lookup_node_mark);
 }
+
+void dnuma_page_being_allocated(struct zone *zone, struct page *page, int order);
 
 int dnuma_page_needs_move_lookup(struct page *page);
 
@@ -64,6 +66,9 @@ static inline int dnuma_page_needs_move(struct page *page)
 {
 	return NUMA_NO_NODE;
 }
+
+static inline void dnuma_page_being_allocated(struct page *page)
+{}
 #endif /* !defined CONFIG_DYNAMIC_NUMA */
 
 #endif /* defined LINUX_DNUMA_H_ */
