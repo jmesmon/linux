@@ -420,8 +420,8 @@ DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t_ro, debugfs_atomic_t_get, NULL, "%lld\n");
 DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t_wo, NULL, debugfs_atomic_t_set, "%lld\n");
 
 /**
- * debugfs_create_atomic_t - create a debugfs file that is used to read and
- * write an atomic_t value
+ * debugfs_create_atomic_u32 - create a debugfs file that is used to read and
+ * write an atomic_t value, formated identically to debugfs_create_u32.
  * @name: a pointer to a string containing the name of the file to create.
  * @mode: the permission that the file should have
  * @parent: a pointer to the parent dentry for this file.  This should be a
@@ -430,7 +430,7 @@ DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t_wo, NULL, debugfs_atomic_t_set, "%lld\n");
  * @value: a pointer to the variable that the file should read to and write
  *         from.
  */
-struct dentry *debugfs_create_atomic_t(const char *name, umode_t mode,
+struct dentry *debugfs_create_atomic_u32(const char *name, umode_t mode,
 				 struct dentry *parent, atomic_t *value)
 {
 	/* if there are no write bits set, make read only */
@@ -444,7 +444,7 @@ struct dentry *debugfs_create_atomic_t(const char *name, umode_t mode,
 
 	return debugfs_create_file(name, mode, parent, value, &fops_atomic_t);
 }
-EXPORT_SYMBOL_GPL(debugfs_create_atomic_t);
+EXPORT_SYMBOL_GPL(debugfs_create_atomic_u32);
 
 static ssize_t read_file_bool(struct file *file, char __user *user_buf,
 			      size_t count, loff_t *ppos)

@@ -884,7 +884,7 @@ static int __init zswap_debugfs_init(void)
 			zswap_debugfs_root, &zswap_duplicate_entry);
 	debugfs_create_u64("pool_pages", S_IRUGO,
 			zswap_debugfs_root, &zswap_pool_pages);
-	debugfs_create_atomic_t("stored_pages", S_IRUGO,
+	debugfs_create_atomic_u32("stored_pages", S_IRUGO,
 			zswap_debugfs_root, &zswap_stored_pages);
 
 	return 0;
