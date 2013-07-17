@@ -493,7 +493,6 @@ struct zone {
 	 * rarely used fields:
 	 */
 	const char		*name;
-	unsigned long free_page_diff; /* debugging zonestats leak */
 } ____cacheline_internodealigned_in_smp;
 
 typedef enum {

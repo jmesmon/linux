@@ -232,18 +232,6 @@ void dnuma_add_page_to_new_zone(struct page *page, int order,
 		set_page_node(pfn_to_page(pfn), dest_nid);
 }
 
-static void check_zone_nr_free_pages(struct zone *zone)
-{
-	unsigned long ps_nr = zone_page_state(zone, NR_FREE_PAGES);
-	unsigned long fa_nr = nr_free_pages_in_zone(zone);
-
-	if (ps_nr != fa_nr || zone->free_page_diff) {
-		pr_err("Node %d %s NR_FREE_PAGES = %lu , free_area *->nr_free = %lu (previous difference: %lu)\n",
-				zone->node, zone->name, ps_nr, fa_nr, zone->free_page_diff);
-		zone->free_page_diff = ps_nr - fa_nr;
-	}
-}
-
 /*
  * must be called with zone->lock held (and local irq disabled) and
  * memlayout's update_lock held
@@ -259,8 +247,6 @@ static void remove_free_page_from_zone(struct memlayout *ml, struct zone *zone,
 
 	__mod_zone_freepage_state(zone, -(1 << order),
 			get_pageblock_migratetype(page));
-	check_zone_nr_free_pages(zone);
-
 
 	lookup_node_clear_order(page, order);
 	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST_REMOVE, ml, order);
