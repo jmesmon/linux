@@ -204,6 +204,13 @@ config DNUMA_STRICT_BOUNDS
 
 	 Choose Y if you are unsure.
 
+config DNUMA_MANAGED_PAGE_UPDATE_DELAY
+	bool "Update managed_page counts gradually rather than all at once (along with present_pages)"
+	depends on DYNAMIC_NUMA
+	default n
+	help
+	 This is a debugging option and shouldn't be in a production kernel
+
 config DNUMA_DEBUGFS
 	bool "Export DNUMA & memlayout internals via debugfs"
 	depends on DYNAMIC_NUMA
