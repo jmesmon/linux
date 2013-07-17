@@ -5,7 +5,6 @@
 #include <linux/mm.h>       /* NODE_DATA, page_zonenum */
 #include <linux/mmzone.h>   /* pfn_to_nid */
 #include <linux/rbtree.h>
-#include <linux/tracepoint.h>
 #include <linux/types.h>    /* size_t */
 
 #ifdef CONFIG_DYNAMIC_NUMA
@@ -86,16 +85,13 @@ struct memlayout {
 	/*
 	 * XXX: This is rather large. Consider: allow building with debugfs
 	 * enabled and allow stat collection to be runtime enabled, and/or
-	 * allow building the debugfs interface as a module
+	 * allow building the debugfs interface as a module, and/or switch to
+	 * tracepoints.
 	 */
 	atomic64_t stats[MLSTAT_COUNT];
 	atomic64_t node_stats[MAX_NUMNODES][MLSTAT_COUNT];
 #endif
 };
-
-DECLARE_TRACE(mm_memlayout_cache_access,
-		TP_PROTO(struct memlayout *ml, bool hit),
-		TP_ARGS(ml, hit));
 
 /*** Global memlayout (pfn_to_node_map) operations */
 
