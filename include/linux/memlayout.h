@@ -106,8 +106,27 @@ static inline struct memlayout *memlayout_rcu_deref_if_active(void)
 	return NULL;
 }
 
+static inline bool memlayout_exists(void)
+{
+	return !!rcu_access_pointer(pfn_to_node_map);
+}
+
 int memlayout_pfn_to_nid(unsigned long pfn);
 int memlayout_pfn_to_nid_if_active(unsigned long pfn);
+
+/*
+ * Put ranges added by memlayout_new_range() into use by
+ * memlayout_pfn_get_nid() and retire old memlayout.
+ *
+ * No modifications to a memlayout should be made after it is commited.
+ */
+void memlayout_commit(struct memlayout *ml);
+
+/*
+ * Set up an inital memlayout in early boot.
+ * A weak default which uses memblock is provided.
+ */
+void memlayout_global_init(void);
 
 /*** Generic memlayout operations */
 
@@ -143,11 +162,8 @@ static inline struct rangemap_entry *rme_first(struct memlayout *ml)
 	     rme = rme_next(rme))
 
 struct memlayout *memlayout_create(enum memlayout_type);
-
-static inline bool memlayout_exists(void)
-{
-	return !!rcu_access_pointer(pfn_to_node_map);
-}
+int memlayout_new_range(struct memlayout *ml,
+		unsigned long pfn_start, unsigned long pfn_end, int nid);
 
 /*
  * In most cases, these should only be used by the memlayout debugfs code (or
@@ -156,26 +172,9 @@ static inline bool memlayout_exists(void)
 void memlayout_destroy(struct memlayout *ml);
 void memlayout_destroy_mem(struct memlayout *ml);
 
-int memlayout_new_range(struct memlayout *ml,
-		unsigned long pfn_start, unsigned long pfn_end, int nid);
-
 struct rangemap_entry *memlayout_pfn_to_rme(struct memlayout *ml,
 					    unsigned long pfn);
 int _memlayout_pfn_to_nid(struct memlayout *ml, unsigned long pfn);
-
-/*
- * Put ranges added by memlayout_new_range() into use by
- * memlayout_pfn_get_nid() and retire old memlayout.
- *
- * No modifications to a memlayout should be made after it is commited.
- */
-void memlayout_commit(struct memlayout *ml);
-
-/*
- * Set up an inital memlayout in early boot.
- * A weak default which uses memblock is provided.
- */
-void memlayout_global_init(void);
 
 #else /* !defined(CONFIG_DYNAMIC_NUMA) */
 
