@@ -250,7 +250,7 @@ static void remove_free_page_from_zone(struct memlayout *ml, struct zone *zone,
 			get_pageblock_migratetype(page));
 
 	lookup_node_clear_order(page, order);
-	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST_REMOVE, ml, order);
+	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST_REMOVE, ml, zone->node, order);
 }
 
 /*
@@ -268,7 +268,7 @@ static void __ref add_free_page_to_node(struct memlayout *ml,
 
 	dnuma_add_page_to_new_zone(page, order, dest_zone, dest_nid);
 	return_pages_to_zone(page, order, dest_zone);
-	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST, ml, order);
+	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST_ADD, ml, dest_nid, order);
 }
 
 #ifdef CONFIG_DNUMA_STRICT_BOUNDS
@@ -299,6 +299,7 @@ static void add_split_pages_to_zones(
 		}
 
 		add_free_page_to_node(ml, nid, page, 0);
+		ml_stat_add(MLSTAT_SPLIT_PAGES, ml, nid, 0);
 	}
 }
 #endif
@@ -423,14 +424,14 @@ static void update_page_counts(struct memlayout *new_ml)
 			if (need_init_pageset
 					&& zone_pageset_can_be_setup(zone)) {
 				setup_zone_pageset(zone);
-				ml_stat_inc(MLSTAT_PCP_SETUP, new_ml);
+				ml_stat_inc(MLSTAT_PCP_SETUP, new_ml, nid);
 			} else {
 				/*
 				 * recalculate pcp ->batch & ->high using
 				 * zone->managed_pages
 				 */
 				zone_pcp_update(zone);
-				ml_stat_inc(MLSTAT_PCP_UPDATE, new_ml);
+				ml_stat_inc(MLSTAT_PCP_UPDATE, new_ml, nid);
 			}
 		}
 
@@ -448,13 +449,13 @@ static void update_page_counts(struct memlayout *new_ml)
 
 
 	if (need_zonelists_rebuild) {
-		ml_stat_inc(MLSTAT_ZONELIST_REBUILD, new_ml);
+		ml_stat_inc(MLSTAT_ZONELIST_REBUILD, new_ml, NUMA_NO_NODE);
 
 		mutex_lock(&zonelists_mutex);
 		build_all_zonelists(NULL, NULL);
 		mutex_unlock(&zonelists_mutex);
 	} else
-		ml_stat_inc(MLSTAT_NO_ZONELIST_REBUILD, new_ml);
+		ml_stat_inc(MLSTAT_NO_ZONELIST_REBUILD, new_ml, NUMA_NO_NODE);
 
 	kfree(counts);
 }
@@ -499,7 +500,7 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		unsigned long flags, last_pfn_in_page, first_pfn_in_page;
 		enum zone_type zone_num;
 
-		ml_stat_inc(MLSTAT_TRANSPLANT_EXAMINED_PFN, ml);
+		ml_stat_inc(MLSTAT_TRANSPLANT_EXAMINED_PFN, ml, new->nid);
 
 		if (!pfn_valid(pfn))
 			continue;
@@ -513,7 +514,7 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		 * allocator, their zone will be corrected.
 		 */
 		if (PageReserved(page)) {
-			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_RESERVED, ml);
+			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_RESERVED, ml, new->nid);
 			continue;
 		}
 
@@ -533,7 +534,7 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		 */
 		page_nid = page_to_nid(page);
 		if (page_nid == new->nid) {
-			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_NID_EQ, ml);
+			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_NID_EQ, ml, new->nid);
 			continue;
 		}
 
@@ -544,7 +545,7 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 
 		/* isolated pages are also caught by this */
 		if (!PageBuddy(page)) {
-			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_PAGE_NOT_BUDDY, ml);
+			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_PAGE_NOT_BUDDY, ml, new->nid);
 			goto skip_unlock;
 		}
 
@@ -556,7 +557,7 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		 */
 		if (page_zone(page) != old_zone) {
 			WARN_ON(page_zone(page) != new_zone);
-			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_ALREADY_DONE, ml);
+			ml_stat_inc(MLSTAT_TRANSPLANT_BAIL_ALREADY_DONE, ml, new->nid);
 			goto skip_unlock;
 		}
 
@@ -590,7 +591,6 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 					last_pfn_in_page,
 					pfn_start, pfn_end,
 					RME_EXP(old), RME_EXP(new));
-			ml_stat_add(MLSTAT_SPLIT_PAGES, ml, order);
 #ifdef CONFIG_DNUMA_STRICT_BOUNDS
 
 			/*
