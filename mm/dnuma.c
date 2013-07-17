@@ -460,7 +460,7 @@ static void update_page_counts(struct memlayout *new_ml)
 	kfree(counts);
 }
 
-static void lock_both_zones(struct zone *z1, struct zone *z2,
+static void lock_2_zones(struct zone *z1, struct zone *z2,
 		unsigned long *flags)
 {
 	BUG_ON(z1 == z2);
@@ -541,7 +541,7 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		old_zone = nid_zone(page_nid,  zone_num);
 		new_zone = nid_zone(new->nid, zone_num);
 
-		lock_both_zones(old_zone, new_zone, &flags);
+		lock_2_zones(old_zone, new_zone, &flags);
 
 		/* isolated pages are also caught by this */
 		if (!PageBuddy(page)) {
