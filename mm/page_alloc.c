@@ -5604,10 +5604,11 @@ static void __setup_per_zone_wmarks(void)
 	unsigned long flags;
 
 	/* Calculate total number of !ZONE_HIGHMEM pages */
-	for_each_zone(zone) {
+	spin_lock(&managed_page_count_lock);
+	for_each_zone(zone)
 		if (!is_highmem(zone))
 			lowmem_pages += zone->managed_pages;
-	}
+	spin_unlock(&managed_page_count_lock);
 
 	for_each_zone(zone) {
 		u64 tmp;
