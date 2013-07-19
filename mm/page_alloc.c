@@ -2662,7 +2662,7 @@ retry_cpuset:
 				preferred_zone, migratetype);
 	}
 
-	trace_mm_page_alloc(page, order, gfp_mask, migratetype);
+	trace_mm_page_alloc(page, order, gfp_mask, migratetype, preferred_zone);
 
 out:
 	/*
