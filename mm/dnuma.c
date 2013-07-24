@@ -46,6 +46,38 @@ int dnuma_page_needs_move_lookup(struct page *page)
 	return new_nid;
 }
 
+#ifdef CONFIG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
+void dnuma_page_being_allocated(struct zone *zone, struct page *page, int order)
+{
+	struct memlayout *ml;
+	int nid;
+	struct zone *future_zone;
+
+	rcu_read_lock();
+	ml = memlayout_rcu_deref_if_active();
+	if (!ml)
+		goto out;
+
+	nid = _memlayout_pfn_to_nid(ml, page_to_pfn(page));
+	if (nid == NUMA_NO_NODE)
+		goto out;
+
+	future_zone = nid_zone(nid, zone_idx(zone));
+
+	zone_adjust_managed_page_count(zone, -(1 << order));
+	zone_adjust_managed_page_count(future_zone, 1 << order);
+
+	update_per_zone_wmark_min();
+
+	ml_stat_add(MLSTAT_FUTURE_ZONE_FIXUP, ml, nid, order);
+out:
+	rcu_read_unlock();
+}
+#else
+void dnuma_page_being_allocated(struct zone *zone, struct page *page, int order)
+{}
+#endif
+
 static void lookup_node_clear_pfn(unsigned long pfn)
 {
 	unsigned long first_pfn_in_sec = SECTION_ALIGN_DOWN(pfn);
