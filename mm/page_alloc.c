@@ -1353,7 +1353,7 @@ void drain_all_pages(void)
 	 */
 	for_each_online_cpu(cpu) {
 		bool has_pcps = false;
-		for_each_populated_zone(zone) {
+		for_each_zone(zone) {
 			pcp = per_cpu_ptr(zone->pageset, cpu);
 			if (pcp->pcp.count) {
 				has_pcps = true;
@@ -1637,6 +1637,9 @@ again:
 	VM_BUG_ON(bad_range(zone, page));
 	if (prep_new_page(page, order, gfp_flags))
 		goto again;
+
+	dnuma_page_being_allocated(zone, page, order);
+
 	return page;
 
 failed:
@@ -3748,6 +3751,64 @@ static void build_zonelist_cache(pg_data_t *pgdat)
 static void setup_pageset(struct per_cpu_pageset *p, unsigned long batch);
 static DEFINE_PER_CPU(struct per_cpu_pageset, boot_pageset);
 
+static void drain_zone_local_pages(void *data)
+{
+	unsigned long *zones_emptied = data;
+	int pos;
+	for_each_set_bit(pos, zones_emptied, MAX_ZONES) {
+		struct zone *zone = zone_pos_to_zone(pos);
+		struct per_cpu_pageset *pset = this_cpu_ptr(zone->pageset);
+		struct per_cpu_pages *pcp = &pset->pcp;
+
+		if (pcp->count) {
+			free_pcppages_bulk(zone, pcp->count, pcp);
+			pcp->count = 0;
+		}
+
+		if (WARN_ON(pset == &boot_pageset))
+			continue;
+		drain_zonestat(zone, pset);
+		free_percpu(zone->pageset);
+		zone->pageset = &boot_pageset;
+	}
+}
+
+void zone_pcp_destroy_from_mask(unsigned long *zones_emptied)
+{
+	int cpu;
+	struct per_cpu_pageset *pcp;
+
+	/*
+	 * Allocate in the BSS so we wont require allocation in
+	 * direct reclaim path for CONFIG_CPUMASK_OFFSTACK=y
+	 */
+	static cpumask_t cpus_with_pcps;
+
+	/*
+	 * We don't care about racing with CPU hotplug event
+	 * as offline notification will cause the notified
+	 * cpu to drain that CPU pcps and on_each_cpu_mask
+	 * disables preemption as part of its processing
+	 */
+	for_each_online_cpu(cpu) {
+		bool has_pcps = false;
+		int pos;
+		for_each_set_bit(pos, zones_emptied, MAX_ZONES) {
+			struct zone *zone = zone_pos_to_zone(pos);
+			pcp = per_cpu_ptr(zone->pageset, cpu);
+			if (pcp->pcp.count) {
+				has_pcps = true;
+				break;
+			}
+		}
+		if (has_pcps)
+			cpumask_set_cpu(cpu, &cpus_with_pcps);
+		else
+			cpumask_clear_cpu(cpu, &cpus_with_pcps);
+	}
+	on_each_cpu_mask(&cpus_with_pcps, drain_zone_local_pages, zones_emptied, 1);
+}
+
 /*
  * Global mutex to protect against size modification of zonelists
  * as well as to serialize pageset setup for the new populated zone.
@@ -5564,13 +5625,18 @@ static void calculate_totalreserve_pages(void)
 	totalreserve_pages = reserve_pages;
 }
 
+#define SET_IF_LOWER(lval, new_val, override) do {	\
+	if ((lval) > (new_val) || !(override))		\
+		lval = new_val;				\
+} while(0)
+
 /*
  * setup_per_zone_lowmem_reserve - called whenever
  *	sysctl_lower_zone_reserve_ratio changes.  Ensures that each zone
  *	has a correct pages reserved value, so an adequate number of
  *	pages are left in the zone after a successful __alloc_pages().
  */
-static void setup_per_zone_lowmem_reserve(void)
+static void setup_per_zone_lowmem_reserve(bool only_shrink)
 {
 	struct pglist_data *pgdat;
 	enum zone_type j, idx;
@@ -5580,7 +5646,7 @@ static void setup_per_zone_lowmem_reserve(void)
 			struct zone *zone = pgdat->node_zones + j;
 			unsigned long managed_pages = zone->managed_pages;
 
-			zone->lowmem_reserve[j] = 0;
+			SET_IF_LOWER(zone->lowmem_reserve[j], 0, only_shrink);
 
 			idx = j;
 			while (idx) {
@@ -5592,8 +5658,8 @@ static void setup_per_zone_lowmem_reserve(void)
 					sysctl_lowmem_reserve_ratio[idx] = 1;
 
 				lower_zone = pgdat->node_zones + idx;
-				lower_zone->lowmem_reserve[j] = managed_pages /
-					sysctl_lowmem_reserve_ratio[idx];
+				SET_IF_LOWER(lower_zone->lowmem_reserve[j], managed_pages /
+					sysctl_lowmem_reserve_ratio[idx], only_shrink);
 				managed_pages += lower_zone->managed_pages;
 			}
 		}
@@ -5603,7 +5669,7 @@ static void setup_per_zone_lowmem_reserve(void)
 	calculate_totalreserve_pages();
 }
 
-static void __setup_per_zone_wmarks(void)
+static void __setup_per_zone_wmarks(bool only_shrink)
 {
 	unsigned long pages_min = min_free_kbytes >> (PAGE_SHIFT - 10);
 	unsigned long lowmem_pages = 0;
@@ -5637,23 +5703,25 @@ static void __setup_per_zone_wmarks(void)
 
 			min_pages = zone->managed_pages / 1024;
 			min_pages = clamp(min_pages, SWAP_CLUSTER_MAX, 128UL);
-			zone->watermark[WMARK_MIN] = min_pages;
+			SET_IF_LOWER(zone->watermark[WMARK_MIN], min_pages, only_shrink);
 		} else {
 			/*
 			 * If it's a lowmem zone, reserve a number of pages
 			 * proportionate to the zone's size.
 			 */
 			zone->watermark[WMARK_MIN] = tmp;
+			SET_IF_LOWER(zone->watermark[WMARK_MIN], tmp, only_shrink);
 		}
 
-		zone->watermark[WMARK_LOW]  = min_wmark_pages(zone) + (tmp >> 2);
-		zone->watermark[WMARK_HIGH] = min_wmark_pages(zone) + (tmp >> 1);
+		SET_IF_LOWER(zone->watermark[WMARK_LOW],  min_wmark_pages(zone) + (tmp >> 2), only_shrink);
+		SET_IF_LOWER(zone->watermark[WMARK_HIGH], min_wmark_pages(zone) + (tmp >> 1), only_shrink);
 
 		setup_zone_migrate_reserve(zone);
 		spin_unlock_irqrestore(&zone->lock, flags);
 	}
 
-	/* update totalreserve_pages */
+	/* update totalreserve_pages. shrink control doesn't need to be passed
+	 * though as this uses the values calculated above */
 	calculate_totalreserve_pages();
 }
 
@@ -5664,10 +5732,10 @@ static void __setup_per_zone_wmarks(void)
  * Ensures that the watermark[min,low,high] values for each zone are set
  * correctly with respect to min_free_kbytes.
  */
-void setup_per_zone_wmarks(void)
+void setup_per_zone_wmarks(bool only_shrink)
 {
 	mutex_lock(&zonelists_mutex);
-	__setup_per_zone_wmarks();
+	__setup_per_zone_wmarks(only_shrink);
 	mutex_unlock(&zonelists_mutex);
 }
 
@@ -5692,7 +5760,7 @@ void setup_per_zone_wmarks(void)
  *    1TB     101        10GB
  *   10TB     320        32GB
  */
-static void __meminit calculate_zone_inactive_ratio(struct zone *zone)
+static void __meminit calculate_zone_inactive_ratio(struct zone *zone, bool only_shrink)
 {
 	unsigned int gb, ratio;
 
@@ -5703,15 +5771,15 @@ static void __meminit calculate_zone_inactive_ratio(struct zone *zone)
 	else
 		ratio = 1;
 
-	zone->inactive_ratio = ratio;
+	SET_IF_LOWER(zone->inactive_ratio, ratio, only_shrink);
 }
 
-static void __meminit setup_per_zone_inactive_ratio(void)
+static void __meminit setup_per_zone_inactive_ratio(bool only_shrink)
 {
 	struct zone *zone;
 
 	for_each_zone(zone)
-		calculate_zone_inactive_ratio(zone);
+		calculate_zone_inactive_ratio(zone, only_shrink);
 }
 
 /*
@@ -5725,7 +5793,7 @@ static void __meminit setup_per_zone_inactive_ratio(void)
  *	min_free_kbytes = sqrt(lowmem_kbytes * 16)
  *
  * which yields
- *
+ * =<8MB:	128K
  * 16MB:	512k
  * 32MB:	724k
  * 64MB:	1024k
@@ -5737,8 +5805,11 @@ static void __meminit setup_per_zone_inactive_ratio(void)
  * 4096MB:	8192k
  * 8192MB:	11584k
  * 16384MB:	16384k
+ *
+ * XXX: callers of this will override any sysctl provided value for
+ * min_free_kbytes (hint: memory_hotplug calls init_per_zone_wmark_min)
  */
-int __meminit init_per_zone_wmark_min(void)
+void setup_min_free_kbytes(void)
 {
 	unsigned long lowmem_kbytes;
 	int new_min_free_kbytes;
@@ -5756,26 +5827,50 @@ int __meminit init_per_zone_wmark_min(void)
 		pr_warn("min_free_kbytes is not updated to %d because user defined value %d is preferred\n",
 				new_min_free_kbytes, user_min_free_kbytes);
 	}
-	setup_per_zone_wmarks();
+}
+
+/*
+ * protects the various watermarks, thresholds, ratios, and reserves calculated
+ * based on info about the avaliable memory. As a general rule, anything set by
+ * init_per_zone_wmark_min() is protected by this.
+ */
+DEFINE_MUTEX(wmark_lock);
+
+int __meminit init_per_zone_wmark_min(void)
+{
+	setup_min_free_kbytes();
+	setup_per_zone_wmarks(false);
 	refresh_zone_stat_thresholds();
-	setup_per_zone_lowmem_reserve();
-	setup_per_zone_inactive_ratio();
+	setup_per_zone_lowmem_reserve(false);
+	setup_per_zone_inactive_ratio(false);
 	return 0;
 }
 module_init(init_per_zone_wmark_min)
 
+void __meminit update_per_zone_wmark_min(bool only_shrink)
+{
+	mutex_lock(&wmark_lock);
+	setup_per_zone_wmarks(only_shrink);
+	refresh_zone_stat_thresholds();
+	setup_per_zone_lowmem_reserve(only_shrink);
+	setup_per_zone_inactive_ratio(only_shrink);
+	mutex_unlock(&wmark_lock);
+}
+
 /*
- * min_free_kbytes_sysctl_handler - just a wrapper around proc_dointvec() so 
- *	that we can call two helper functions whenever min_free_kbytes
- *	changes.
+ * min_free_kbytes_sysctl_handler - just a wrapper around proc_dointvec() which
+ *	allows -1 to reset min_free_kbytes to non-sysctl controlled state
+ *	performs recalculations based on min_free_kbytes changing.
  */
-int min_free_kbytes_sysctl_handler(ctl_table *table, int write, 
+int min_free_kbytes_sysctl_handler(ctl_table *table, int write,
 	void __user *buffer, size_t *length, loff_t *ppos)
 {
 	proc_dointvec(table, write, buffer, length, ppos);
 	if (write) {
+		mutex_lock(&wmark_lock);
 		user_min_free_kbytes = min_free_kbytes;
-		setup_per_zone_wmarks();
+		setup_per_zone_wmarks(false);
+		mutex_unlock(&wmark_lock);
 	}
 	return 0;
 }
@@ -5827,7 +5922,7 @@ int lowmem_reserve_ratio_sysctl_handler(ctl_table *table, int write,
 	void __user *buffer, size_t *length, loff_t *ppos)
 {
 	proc_dointvec_minmax(table, write, buffer, length, ppos);
-	setup_per_zone_lowmem_reserve();
+	setup_per_zone_lowmem_reserve(false);
 	return 0;
 }
 
@@ -6366,6 +6461,7 @@ void zone_pcp_reset(struct zone *zone)
 	struct per_cpu_pageset *pset;
 
 	/* avoid races with drain_pages()  */
+	/* XXX: this won't protect anything. */
 	local_irq_save(flags);
 	if (zone->pageset != &boot_pageset) {
 		for_each_online_cpu(cpu) {
@@ -6538,3 +6634,38 @@ void dump_page(struct page *page)
 	dump_page_flags(page->flags);
 	mem_cgroup_print_bad_page(page);
 }
+
+#ifdef CONFIG_DYNAMIC_NUMA
+/*
+ * @zone has ->managed_pages = 0, clear the watermarks & reserves so the OOM
+ * killer doesn't go beserk when we remove all of this zone's pages.
+ */
+static void zone_zero_wmarks_and_reserves(struct zone *zone)
+{
+	int i;
+	unsigned long flags;
+	spin_lock_irqsave(&zone->lock, flags);
+	zone->dirty_balance_reserve = 0;
+	for (i = 0; i < MAX_NR_ZONES; i++)
+		zone->lowmem_reserve[i] = 0;
+
+	zone->watermark[WMARK_MIN] = 0;
+	zone->watermark[WMARK_LOW] = 0;
+	zone->watermark[WMARK_HIGH] = 0;
+	calculate_totalreserve_pages();
+	spin_unlock_irqrestore(&zone->lock, flags);
+}
+
+/*
+ * FIXME: don't just zero everything, perfrom the calculations but only do
+ * reductions.
+ */
+void reduce_per_zone_wmarks_and_reserves(void)
+{
+	struct zone *zone;
+	mutex_lock(&zonelists_mutex);
+	for_each_zone(zone)
+		zone_zero_wmarks_and_reserves(zone);
+	mutex_unlock(&zonelists_mutex);
+}
+#endif

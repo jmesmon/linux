@@ -993,7 +993,7 @@ int __ref online_pages(unsigned long pfn, unsigned long nr_pages, int online_typ
 
 	mutex_unlock(&zonelists_mutex);
 
-	init_per_zone_wmark_min();
+	update_per_zone_wmark_min(false);
 
 	if (onlined_pages)
 		kswapd_run(zone_to_nid(zone));
@@ -1577,7 +1577,7 @@ repeat:
 	zone->zone_pgdat->node_present_pages -= offlined_pages;
 	pgdat_resize_unlock(zone->zone_pgdat, &flags);
 
-	init_per_zone_wmark_min();
+	update_per_zone_wmark_min();
 
 	if (!populated_zone(zone)) {
 		zone_pcp_reset(zone);

@@ -94,20 +94,24 @@ extern pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address);
 /*
  * in mm/page_alloc.c
  */
+extern struct mutex wmark_lock;
 extern void __free_pages_bootmem(struct page *page, unsigned int order);
 extern void prep_compound_page(struct page *page, unsigned long order);
 #ifdef CONFIG_MEMORY_FAILURE
 extern bool is_free_buddy_page(struct page *page);
 #endif
 #ifdef CONFIG_DYNAMIC_NUMA
-void return_pages_to_zone(struct page *page, unsigned int order,
+extern void return_pages_to_zone(struct page *page, unsigned int order,
 			  struct zone *zone);
+extern void reduce_per_zone_wmarks_and_reserves(void);
 #endif
-void __meminit setup_zone_pageset(struct zone *zone);
-bool zone_pageset_can_be_setup(struct zone *zone);
-unsigned long nr_free_pages_in_zone(struct zone *zone);
-void zone_pcp_destroy_from_mask(unsigned long *zones_emptied);
-void zone_adjust_managed_page_count(struct zone *zone, long count);
+extern void __meminit setup_zone_pageset(struct zone *zone);
+extern bool zone_pageset_can_be_setup(struct zone *zone);
+extern unsigned long nr_free_pages_in_zone(struct zone *zone);
+extern void zone_pcp_destroy_from_mask(unsigned long *zones_emptied);
+extern void zone_adjust_managed_page_count(struct zone *zone, long count);
+extern int __meminit init_per_zone_wmark_min(void);
+extern void __meminit update_per_zone_wmark_min(bool only_shrink);
 
 #ifdef CONFIG_MEMORY_HOTPLUG
 /*

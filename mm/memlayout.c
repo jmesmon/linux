@@ -17,6 +17,8 @@
 #include <linux/swap.h> /* lru_add_drain_all() */
 
 #include "memlayout-debugfs.h"
+#define CREATE_TRACE_POINTS
+#include "memlayout-trace.h"
 
 /* protected by memlayout_lock */
 __rcu struct memlayout *pfn_to_node_map;
@@ -105,11 +107,13 @@ struct rangemap_entry *memlayout_pfn_to_rme(struct memlayout *ml,
 	smp_read_barrier_depends();
 
 	if (rme && rme_bounds_pfn(rme, pfn)) {
-		ml_stat_inc(MLSTAT_CACHE_HIT, ml);
+		ml_stat_inc(MLSTAT_CACHE_HIT, ml, rme->nid);
+		trace_memlayout_cache_access(ml, true);
 		return rme;
 	}
 
-	ml_stat_inc(MLSTAT_CACHE_MISS, ml);
+	ml_stat_inc(MLSTAT_CACHE_MISS, ml, NUMA_NO_NODE);
+	trace_memlayout_cache_access(ml, false);
 
 	node = ml->root.rb_node;
 	while (node) {
@@ -136,16 +140,10 @@ struct rangemap_entry *memlayout_pfn_to_rme(struct memlayout *ml,
 	return NULL;
 }
 
-int memlayout_pfn_to_nid_if_active(unsigned long pfn)
+int _memlayout_pfn_to_nid(struct memlayout *ml, unsigned long pfn)
 {
-	struct memlayout *ml;
 	struct rangemap_entry *rme;
 	int nid = NUMA_NO_NODE;
-
-	rcu_read_lock();
-	ml = memlayout_rcu_deref_if_active();
-	if (!ml)
-		goto out;
 
 	rme = memlayout_pfn_to_rme(ml, pfn);
 	if (!rme)
@@ -153,22 +151,30 @@ int memlayout_pfn_to_nid_if_active(unsigned long pfn)
 
 	nid = rme->nid;
 out:
+	return nid;
+}
+
+int memlayout_pfn_to_nid_if_active(unsigned long pfn)
+{
+	struct memlayout *ml;
+	int nid = NUMA_NO_NODE;
+
+	rcu_read_lock();
+	ml = memlayout_rcu_deref_if_active();
+	if (!ml)
+		goto out;
+
+	nid = _memlayout_pfn_to_nid(ml, pfn);
+out:
 	rcu_read_unlock();
 	return nid;
 }
 
 int memlayout_pfn_to_nid(unsigned long pfn)
 {
-	struct rangemap_entry *rme;
-	int nid = NUMA_NO_NODE;
-
+	int nid;
 	rcu_read_lock();
-	rme = memlayout_pfn_to_rme(rcu_dereference(pfn_to_node_map), pfn);
-	if (!rme)
-		goto out;
-
-	nid = rme->nid;
-out:
+	nid = _memlayout_pfn_to_nid(rcu_dereference(pfn_to_node_map), pfn);
 	rcu_read_unlock();
 	return nid;
 }
@@ -180,6 +186,8 @@ out:
  *   - handled by extending the first range to the beginning of memory and
  *     extending all other ranges until they abut the following range (or in the
  *     case of the last node, the end of memory)
+ *
+ * Future work:
  *
  * 1) we could have it exclude pfn ranges that are !pfn_valid() if we hook
  * into the code which changes pfn validity.
