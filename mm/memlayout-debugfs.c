@@ -12,7 +12,7 @@ static const char *ml_stat_names[] = {
 	"cache-hit",
 	"cache-miss",
 	"transplant-on-free",
-	"transplant-from-freelist",
+	"transplant-from-freelist-add",
 
 	"zonelist-rebuild",
 	"no-zonelist-rebuild",
@@ -29,6 +29,9 @@ static const char *ml_stat_names[] = {
 
 	"transplant-from-freelist-remove",
 	"transplant-examined-pfn",
+	"drain-zonestat",
+
+	"future-zone-fixup",
 };
 
 /* nests inside of memlayout_lock */
@@ -113,44 +116,82 @@ static void _ml_dbgfs_set_current(struct memlayout *ml, char *name_buf)
 }
 
 static atomic64_t ml_stats[MLSTAT_COUNT];
+/* XXX: add to NODE_DATA()? */
+static atomic64_t ml_node_stats[MAX_NUMNODES][MLSTAT_COUNT];
 
-void ml_stat_add(enum memlayout_stat stat, struct memlayout *ml, int order)
+void ml_stat_add(enum memlayout_stat stat, struct memlayout *ml, int node, int order)
 {
 	atomic64_add(1 << order, &ml_stats[stat]);
-	if (ml)
+	if (node != NUMA_NO_NODE)
+		atomic64_add(1 << order, &ml_node_stats[node][stat]);
+	if (ml) {
 		atomic64_add(1 << order, &ml->stats[stat]);
+		if (node != NUMA_NO_NODE)
+			atomic64_add(1 << order, &ml->node_stats[node][stat]);
+	}
 }
 
-void ml_stat_inc(enum memlayout_stat stat, struct memlayout *ml)
+void ml_stat_inc(enum memlayout_stat stat, struct memlayout *ml, int node)
 {
 	atomic64_inc(&ml_stats[stat]);
-	if (ml)
+	if (node != NUMA_NO_NODE)
+		atomic64_inc(&ml_node_stats[node][stat]);
+	if (ml) {
 		atomic64_inc(&ml->stats[stat]);
+		if (node != NUMA_NO_NODE)
+			atomic64_inc(&ml->node_stats[node][stat]);
+	}
+}
+
+#define UNSIGNED_DIGIT_CT ((size_t)DIV_ROUND_UP(sizeof(unsigned) * 8, 3))
+
+static void create_stats_under(struct dentry *d, atomic64_t *stat_buf)
+{
+	size_t i;
+	for (i = 0; i < MLSTAT_COUNT; i++)
+		debugfs_create_atomic_u64(ml_stat_names[i], 0400, d, &stat_buf[i]);
+}
+
+static void create_node_stats_under(struct dentry *d,
+		atomic64_t node_stat_buf[][MLSTAT_COUNT])
+{
+	char node_buf[UNSIGNED_DIGIT_CT + 1];
+	int i;
+	for (i = 0; i < nr_node_ids; i++) {
+		struct dentry *nd;
+		sprintf(node_buf, "%d", i);
+		nd = debugfs_create_dir(node_buf, d);
+		if (WARN_ON(!nd))
+			return;
+
+		create_stats_under(nd, node_stat_buf[i]);
+	}
+}
+
+static void create_stat_dirs(struct dentry *top_d, atomic64_t stat_buf[],
+		atomic64_t node_stat_buf[][MLSTAT_COUNT])
+{
+	struct dentry *d = debugfs_create_dir("stats", top_d);
+	if (WARN_ON(!d))
+		return;
+
+	create_stats_under(d, stat_buf);
+
+	d = debugfs_create_dir("node_stats", top_d);
+	if (WARN_ON(!d))
+		return;
+
+	create_node_stats_under(d, node_stat_buf);
 }
 
 static void create_global_stats(void)
 {
-	size_t i;
-	struct dentry *d = debugfs_create_dir("stats", root_dentry);
-	if (!d)
-		return;
-
-	/* FIXME: use debugfs_create_atomic64() [does not yet exsist]. */
-	for (i = 0; i < MLSTAT_COUNT; i++)
-		debugfs_create_u64(ml_stat_names[i], 0400, d,
-					(uint64_t *)&ml_stats[i]);
+	create_stat_dirs(root_dentry, ml_stats, ml_node_stats);
 }
 
 static void create_ml_stats(struct memlayout *ml)
 {
-	size_t i;
-	struct dentry *d = debugfs_create_dir("stats", ml->d);
-	if (!d)
-		return;
-
-	for (i = 0; i < MLSTAT_COUNT; i++)
-		debugfs_create_u64(ml_stat_names[i], 0400, d,
-					(uint64_t *)&ml->stats[i]);
+	create_stat_dirs(ml->d, ml->stats, ml->node_stats);
 }
 
 static void ml_dbgfs_create_layout_dir_assume_root(struct memlayout *ml)
@@ -343,6 +384,7 @@ void ml_dbgfs_memlayout_init(struct memlayout *ml)
 	ml->seq = atomic_inc_return(&ml_seq) - 1;
 	ml_dbgfs_create_layout_dir(ml);
 	memset(ml->stats, 0, sizeof(ml->stats));
+	memset(ml->node_stats, 0, sizeof(ml->node_stats));
 	mutex_unlock(&ml_dbgfs_lock);
 }
 
