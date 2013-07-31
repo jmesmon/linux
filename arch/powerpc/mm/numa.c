@@ -38,6 +38,7 @@
 #include <asm/vdso.h>
 
 static int numa_enabled = 1;
+static bool topology_update = true;
 
 static char *cmdline __initdata;
 
@@ -1645,6 +1646,7 @@ int stop_topology_update(void)
 		rc = del_timer_sync(&topology_timer);
 	}
 
+	topology_update = false;
 	return rc;
 }
 
@@ -1653,55 +1655,37 @@ int prrn_is_enabled(void)
 	return prrn_enabled;
 }
 
-static int topology_read(struct seq_file *file, void *v)
+static int param_set_topology_update(const char *val, const struct kernel_param *kp)
 {
-	if (vphn_enabled || prrn_enabled)
-		seq_puts(file, "on\n");
-	else
-		seq_puts(file, "off\n");
+	int ret;
+	bool on, old = *((bool *)kp->arg);
 
+	if (!val)
+		return -EINVAL;
+
+	ret = param_set_bool(val, kp->arg);
+	if (ret)
+		return ret;
+
+	on = *((bool *)kp->arg);
+	if (!old && on)
+		start_topology_update();
+	else if (old && !on)
+		stop_topology_update();
 	return 0;
 }
 
-static int topology_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, topology_read, NULL);
-}
-
-static ssize_t topology_write(struct file *file, const char __user *buf,
-			      size_t count, loff_t *off)
-{
-	char kbuf[4]; /* "on" or "off" plus null. */
-	int read_len;
-
-	read_len = count < 3 ? count : 3;
-	if (copy_from_user(kbuf, buf, read_len))
-		return -EINVAL;
-
-	kbuf[read_len] = '\0';
-
-	if (!strncmp(kbuf, "on", 2))
-		start_topology_update();
-	else if (!strncmp(kbuf, "off", 3))
-		stop_topology_update();
-	else
-		return -EINVAL;
-
-	return count;
-}
-
-static const struct file_operations topology_ops = {
-	.read = seq_read,
-	.write = topology_write,
-	.open = topology_open,
-	.release = single_release
+static const struct kernel_param_ops param_ops_topology_update_bool = {
+	.set = param_set_topology_update,
+	.get = param_get_bool,
 };
+
+module_param(topology_update, topology_update_bool, 0644);
 
 static int topology_update_init(void)
 {
-	start_topology_update();
-	proc_create("powerpc/topology_updates", 644, NULL, &topology_ops);
-
+	if (topology_update)
+		start_topology_update();
 	return 0;
 }
 device_initcall(topology_update_init);
