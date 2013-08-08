@@ -39,8 +39,6 @@
 #include <asm/vdso.h>
 
 static int numa_enabled = 1;
-static bool topology_update = true;
-
 static char *cmdline __initdata;
 
 static int numa_debug;
@@ -1290,9 +1288,9 @@ static const char *const tum_names[] = {
 };
 
 /* What is our selection process for update modes? */
-static int topology_update_selection = TUM_AUTO;
+static unsigned topology_update_selection = TUM_AUTO;
 /* What are we currently tracking? Must be a real mode (not AUTO). */
-static int topology_update_mode = TUM_NONE;
+static unsigned topology_update_mode = TUM_NONE;
 
 static void reset_topology_timer(void);
 
@@ -1757,7 +1755,7 @@ static int param_set_topology_update_mode(const char *val,
 static int param_get_topology_update_mode(char *buffer,
 		const struct kernel_param *kp)
 {
-	int sel = *((int *))kp->arg;
+	int sel = *(int *)kp->arg;
 	/* Cheat a bit and provide the currently used mode as well */
 	return sprintf(buffer, "%s%s [%s]", (sel & TUM_FORCE) ? "force:" : "",
 			tum_names[sel & ~TUM_FORCE],
@@ -1768,6 +1766,7 @@ static const struct kernel_param_ops param_ops_topology_update_mode = {
 	.set = param_set_topology_update_mode,
 	.get = param_get_topology_update_mode,
 };
+#define param_check_topology_update_mode param_check_uint
 
 /*
  * topology_update_mode values:
