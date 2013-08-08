@@ -69,21 +69,17 @@ static inline void sysfs_remove_device_from_node(struct device *dev,
 #endif /* CONFIG_NUMA */
 
 #if defined(CONFIG_NUMA) && defined(CONFIG_PPC_SPLPAR)
-extern int start_topology_update(void);
-extern int stop_topology_update(void);
-extern int prrn_is_enabled(void);
+extern void start_topology_update(void);
+extern void stop_topology_update(void);
+extern bool prrn_is_enabled(void);
 #else
-static inline int start_topology_update(void)
+static inline void topology_update_stop(void)
+{}
+static inline void start_topology_update(void)
+{}
+static inline bool prrn_is_enabled(void)
 {
-	return 0;
-}
-static inline int stop_topology_update(void)
-{
-	return 0;
-}
-static inline int prrn_is_enabled(void)
-{
-	return 0;
+	return false;
 }
 #endif /* CONFIG_NUMA && CONFIG_PPC_SPLPAR */
 

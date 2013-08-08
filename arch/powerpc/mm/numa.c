@@ -1634,7 +1634,7 @@ static int topology_mode_supported(void)
 	return ret;
 }
 
-int topology_update_stop(void)
+static int topology_update_stop(void)
 {
 	int rc = 0;
 
@@ -1720,11 +1720,6 @@ static void topology_update_setup(void)
 	}
 }
 
-int prrn_is_enabled(void)
-{
-	return topology_update_mode == TUM_PRRN;
-}
-
 static int param_set_topology_update_mode(const char *val,
 		const struct kernel_param *kp)
 {
@@ -1783,11 +1778,29 @@ static const struct kernel_param_ops param_ops_topology_update_mode = {
 module_param_named(topology_update_mode, topology_update_selection,
 		topology_update_mode, 0644);
 
-static int topology_update_init(void)
+/* FIXME: Anything using this will be racy and needs changing */
+bool prrn_is_enabled(void)
+{
+	return topology_update_mode == TUM_PRRN;
+}
+
+void stop_topology_update(void)
+{
+	kparam_block_sysfs_write(topology_update_mode);
+	topology_update_stop();
+	kparam_unblock_sysfs_write(topology_update_mode);
+}
+
+void start_topology_update(void)
 {
 	kparam_block_sysfs_write(topology_update_mode);
 	topology_update_setup();
 	kparam_unblock_sysfs_write(topology_update_mode);
+}
+
+static int topology_update_init(void)
+{
+	start_topology_update();
 	return 0;
 }
 device_initcall(topology_update_init);
