@@ -27,6 +27,7 @@
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
+#include <linux/moduleparam.h>
 #include <asm/cputhreads.h>
 #include <asm/sparsemem.h>
 #include <asm/prom.h>
@@ -1270,8 +1271,29 @@ struct topology_update_data {
 
 static u8 vphn_cpu_change_counts[NR_CPUS][MAX_DISTANCE_REF_POINTS];
 static cpumask_t cpu_associativity_changes_mask;
-static int vphn_enabled;
-static int prrn_enabled;
+
+enum {
+	TUM_AUTO  = 0,
+	TUM_NONE  = 1,
+	TUM_PRRN  = 2,
+	TUM_VPHN  = 3,
+
+	/* flag, ORed with TUM_PRRN or TUM_VPHN */
+	TUM_FORCE = 4,
+};
+
+static const char *const tum_names[] = {
+	[TUM_AUTO] = "auto",
+	[TUM_NONE] = "none",
+	[TUM_PRRN] = "prrn",
+	[TUM_VPHN] = "vphn",
+};
+
+/* What is our selection process for update modes? */
+static int topology_update_selection = TUM_AUTO;
+/* What are we currently tracking? Must be a real mode (not AUTO). */
+static int topology_update_mode = TUM_NONE;
+
 static void reset_topology_timer(void);
 
 /*
@@ -1545,9 +1567,12 @@ void topology_schedule_update(void)
 
 static void topology_timer_fn(unsigned long ignored)
 {
-	if (prrn_enabled && cpumask_weight(&cpu_associativity_changes_mask))
-		topology_schedule_update();
-	else if (vphn_enabled) {
+	switch (topology_update_mode) {
+	case TUM_PRRN:
+		if (cpumask_weight(&cpu_associativity_changes_mask))
+			topology_schedule_update();
+		break;
+	case TUM_VPHN:
 		if (update_cpu_associativity_changes_mask() > 0)
 			topology_schedule_update();
 		reset_topology_timer();
@@ -1600,92 +1625,170 @@ static struct notifier_block dt_update_nb = {
 
 #endif
 
-/*
- * Start polling for associativity changes.
- */
-int start_topology_update(void)
+static int topology_mode_supported(void)
 {
-	int rc = 0;
+	int ret = 0;
+	if (firmware_has_feature(FW_FEATURE_PRRN))
+		ret |= TUM_PRRN;
+	if (firmware_has_feature(FW_FEATURE_VPHN) && lppaca_shared_proc(get_lppaca()))
+		ret |= TUM_VPHN;
 
-	if (firmware_has_feature(FW_FEATURE_PRRN)) {
-		if (!prrn_enabled) {
-			prrn_enabled = 1;
-			vphn_enabled = 0;
-#ifdef CONFIG_SMP
-			rc = of_reconfig_notifier_register(&dt_update_nb);
-#endif
-		}
-	} else if (firmware_has_feature(FW_FEATURE_VPHN) &&
-		   lppaca_shared_proc(get_lppaca())) {
-		if (!vphn_enabled) {
-			prrn_enabled = 0;
-			vphn_enabled = 1;
-			setup_cpu_associativity_change_counters();
-			init_timer_deferrable(&topology_timer);
-			reset_topology_timer();
-		}
-	}
-
-	return rc;
+	return ret;
 }
 
-/*
- * Disable polling for VPHN associativity changes.
- */
-int stop_topology_update(void)
+int topology_update_stop(void)
 {
 	int rc = 0;
 
-	if (prrn_enabled) {
-		prrn_enabled = 0;
+	switch (topology_update_mode) {
+	case TUM_PRRN:
 #ifdef CONFIG_SMP
 		rc = of_reconfig_notifier_unregister(&dt_update_nb);
 #endif
-	} else if (vphn_enabled) {
-		vphn_enabled = 0;
+		break;
+	case TUM_VPHN:
 		rc = del_timer_sync(&topology_timer);
 	}
 
-	topology_update = false;
+	topology_update_mode = TUM_NONE;
 	return rc;
+}
+
+static void topology_update_start_prrn(void)
+{
+	if (topology_update_mode == TUM_PRRN)
+		return;
+
+#ifdef CONFIG_SMP
+	WARN_ON(of_reconfig_notifier_register(&dt_update_nb));
+#endif
+	topology_update_stop();
+	topology_update_mode = TUM_PRRN;
+	/*
+	 * FIXME: we may have missed some parts of a topology update while
+	 * switching methods, do a system wide topology rescan.
+	 */
+}
+
+static void topology_update_start_vphn(void)
+{
+	if (topology_update_mode == TUM_VPHN)
+		return;
+
+	setup_cpu_associativity_change_counters();
+	init_timer_deferrable(&topology_timer);
+	reset_topology_timer();
+
+	topology_update_stop();
+	topology_update_mode = TUM_VPHN;
+}
+
+/*
+ * based on topology_update_selection, topology_update_mode, and
+ * topology_mode_supported(), set things up.
+ *
+ * The topology_update_start_*() functions are given responsibility to shut
+ * down the previous topology update method.
+ *
+ * This must be called with kparam_block_sysfs_write(topology_update_mode) held.
+ */
+static void topology_update_setup(void)
+{
+	int sup = topology_mode_supported();
+
+	switch (topology_update_selection & ~TUM_FORCE) {
+	case TUM_AUTO:
+		if (sup & TUM_PRRN)
+			topology_update_start_prrn();
+		else if (sup & TUM_VPHN)
+			topology_update_start_vphn();
+		else
+			topology_update_stop();
+		break;
+	case TUM_VPHN:
+		if (sup & TUM_VPHN || topology_update_selection & TUM_FORCE)
+			topology_update_start_vphn();
+		else
+			topology_update_stop();
+		break;
+	case TUM_PRRN:
+		if (sup & TUM_PRRN || topology_update_selection & TUM_FORCE)
+			topology_update_start_prrn();
+		else
+			topology_update_stop();
+		break;
+	case TUM_NONE:
+		topology_update_stop();
+	}
 }
 
 int prrn_is_enabled(void)
 {
-	return prrn_enabled;
+	return topology_update_mode == TUM_PRRN;
 }
 
-static int param_set_topology_update(const char *val, const struct kernel_param *kp)
+static int param_set_topology_update_mode(const char *val,
+		const struct kernel_param *kp)
 {
-	int ret;
-	bool on, old = *((bool *)kp->arg);
-
+	int new;
 	if (!val)
 		return -EINVAL;
 
-	ret = param_set_bool(val, kp->arg);
-	if (ret)
-		return ret;
+	if (!strcmp(val, "auto"))
+		new = TUM_AUTO;
+	else if (!strcmp(val, "none"))
+		new = TUM_NONE;
+	else if (!strcmp(val, "force:vphn"))
+		new = TUM_FORCE | TUM_VPHN;
+	else if (!strcmp(val, "force:prrn"))
+		new = TUM_FORCE | TUM_PRRN;
+	else if (!strcmp(val, "prrn"))
+		new = TUM_PRRN;
+	else if (!strcmp(val, "vphn"))
+		new = TUM_VPHN;
+	else
+		return -EINVAL;
 
-	on = *((bool *)kp->arg);
-	if (!old && on)
-		start_topology_update();
-	else if (old && !on)
-		stop_topology_update();
+	topology_update_selection = new;
+	topology_update_setup();
 	return 0;
 }
 
-static const struct kernel_param_ops param_ops_topology_update_bool = {
-	.set = param_set_topology_update,
-	.get = param_get_bool,
+static int param_get_topology_update_mode(char *buffer,
+		const struct kernel_param *kp)
+{
+	int sel = *((int *))kp->arg;
+	/* Cheat a bit and provide the currently used mode as well */
+	return sprintf(buffer, "%s%s [%s]", (sel & TUM_FORCE) ? "force:" : "",
+			tum_names[sel & ~TUM_FORCE],
+			tum_names[topology_update_mode]);
+}
+
+static const struct kernel_param_ops param_ops_topology_update_mode = {
+	.set = param_set_topology_update_mode,
+	.get = param_get_topology_update_mode,
 };
 
-module_param(topology_update, topology_update_bool, 0644);
+/*
+ * topology_update_mode values:
+ * "auto" : default
+ * "off" : disable entirely
+ * "vphn" : try vphn, or NONE
+ * "prrn" : try prrn, or NONE
+ * "force:vphn" : force vphn
+ * "force:prrn" : force prrn
+ *
+ * This could be extended to allow control of fallback order ("vphn,prrn", et
+ * c.)
+ */
+module_param_named(topology_update_mode, topology_update_selection,
+		topology_update_mode, 0644);
 
 static int topology_update_init(void)
 {
-	if (topology_update)
-		start_topology_update();
+	kparam_block_sysfs_write(topology_update_mode);
+	topology_update_setup();
+	kparam_unblock_sysfs_write(topology_update_mode);
 	return 0;
 }
 device_initcall(topology_update_init);
