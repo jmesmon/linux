@@ -1727,6 +1727,8 @@ static int param_set_topology_update_mode(const char *val,
 	if (!val)
 		return -EINVAL;
 
+	pr_info("Got new mode '%s'\n", val);
+
 	if (!strcmp(val, "auto"))
 		new = TUM_AUTO;
 	else if (!strcmp(val, "none"))
