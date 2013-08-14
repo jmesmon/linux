@@ -1724,22 +1724,27 @@ static int param_set_topology_update_mode(const char *val,
 		const struct kernel_param *kp)
 {
 	int new;
+	size_t l;
 	if (!val)
 		return -EINVAL;
 
-	pr_info("Got new mode '%s'\n", val);
+	l = strlen(val);
+	if (val[l - 1] == '\n')
+		l--;
 
-	if (!strcmp(val, "auto"))
+	pr_info("Got new mode '%.*s'\n", (int)l, val);
+
+	if (!strncmp(val, "auto", l))
 		new = TUM_AUTO;
-	else if (!strcmp(val, "none"))
+	else if (!strncmp(val, "none", l))
 		new = TUM_NONE;
-	else if (!strcmp(val, "force:vphn"))
+	else if (!strncmp(val, "force:vphn", l))
 		new = TUM_FORCE | TUM_VPHN;
-	else if (!strcmp(val, "force:prrn"))
+	else if (!strncmp(val, "force:prrn", l))
 		new = TUM_FORCE | TUM_PRRN;
-	else if (!strcmp(val, "prrn"))
+	else if (!strncmp(val, "prrn", l))
 		new = TUM_PRRN;
-	else if (!strcmp(val, "vphn"))
+	else if (!strncmp(val, "vphn", l))
 		new = TUM_VPHN;
 	else
 		return -EINVAL;
