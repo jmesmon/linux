@@ -1728,11 +1728,10 @@ static int param_set_topology_update_mode(const char *val,
 	if (!val)
 		return -EINVAL;
 
+	/* Allow a trailing newline */
 	l = strlen(val);
 	if (val[l - 1] == '\n')
 		l--;
-
-	pr_info("Got new mode '%.*s'\n", (int)l, val);
 
 	if (!strncmp(val, "auto", l))
 		new = TUM_AUTO;
