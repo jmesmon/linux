@@ -1313,7 +1313,7 @@ u64 memory_hotplug_max(void)
 #endif /* CONFIG_MEMORY_HOTPLUG */
 
 /* Virtual Processor Home Node (VPHN) support */
-#ifdef CONFIG_PPC_SPLPAR
+#if defined(CONFIG_PPC_SPLPAR) && defined(CONFIG_SMP)
 struct topology_update_data {
 	struct topology_update_data *next;
 	unsigned int cpu;
@@ -1690,8 +1690,6 @@ static void reset_topology_timer(void)
 	mod_timer(&topology_timer, topology_timer.expires);
 }
 
-#ifdef CONFIG_SMP
-
 static void stage_topology_update(int core_id)
 {
 	cpumask_or(&cpu_associativity_changes_mask,
@@ -1725,8 +1723,6 @@ static struct notifier_block dt_update_nb = {
 	.notifier_call = dt_update_callback,
 };
 
-#endif
-
 static int topology_mode_supported(void)
 {
 	int ret = 0;
@@ -1744,9 +1740,7 @@ static int topology_update_stop(void)
 
 	switch (topology_update_mode) {
 	case TUM_PRRN:
-#ifdef CONFIG_SMP
 		rc = of_reconfig_notifier_unregister(&dt_update_nb);
-#endif
 		break;
 	case TUM_VPHN:
 		rc = del_timer_sync(&topology_timer);
@@ -1761,9 +1755,7 @@ static void topology_update_start_prrn(void)
 	if (topology_update_mode == TUM_PRRN)
 		return;
 
-#ifdef CONFIG_SMP
 	WARN_ON(of_reconfig_notifier_register(&dt_update_nb));
-#endif
 	topology_update_stop();
 	topology_update_mode = TUM_PRRN;
 	/*
@@ -1966,4 +1958,5 @@ static int topology_update_init(void)
 	return 0;
 }
 device_initcall(topology_update_init);
-#endif /* CONFIG_PPC_SPLPAR */
+
+#endif /* CONFIG_PPC_SPLPAR && CONFIG_SMP */
