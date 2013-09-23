@@ -1259,7 +1259,7 @@ u64 memory_hotplug_max(void)
 #endif /* CONFIG_MEMORY_HOTPLUG */
 
 /* Virtual Processor Home Node (VPHN) support */
-#if defined(CONFIG_PPC_SPLPAR) && defined(CONFIG_SMP)
+#if defined(CONFIG_PPC_SPLPAR)
 struct topology_update_data {
 	struct topology_update_data *next;
 	unsigned int cpu;
@@ -1803,4 +1803,4 @@ static int topology_update_init(void)
 }
 device_initcall(topology_update_init);
 
-#endif /* CONFIG_PPC_SPLPAR && CONFIG_SMP */
+#endif /* CONFIG_PPC_SPLPAR */
