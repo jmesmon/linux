@@ -1273,8 +1273,8 @@ static cpumask_t cpu_associativity_changes_mask;
 enum {
 	TUM_AUTO  = 0,
 	TUM_NONE  = 1,
-	TUM_PRRN  = 2,
-	TUM_VPHN  = 3,
+	TUM_VPHN  = 2,
+	TUM_PRRN  = 3,
 
 	/* flag, ORed with TUM_PRRN or TUM_VPHN */
 	TUM_FORCE = 4,
@@ -1283,8 +1283,8 @@ enum {
 static const char *const tum_names[] = {
 	[TUM_AUTO] = "auto",
 	[TUM_NONE] = "none",
-	[TUM_PRRN] = "prrn",
 	[TUM_VPHN] = "vphn",
+	[TUM_PRRN] = "prrn",
 };
 
 /* What is our selection process for update modes? */
