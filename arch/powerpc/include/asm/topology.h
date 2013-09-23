@@ -53,7 +53,7 @@ extern void __init dump_numa_cpu_topology(void);
 extern int sysfs_add_device_to_node(struct device *dev, int nid);
 extern void sysfs_remove_device_from_node(struct device *dev, int nid);
 
-#else
+#else /* !CONFIG_NUMA */
 
 static inline void dump_numa_cpu_topology(void) {}
 
@@ -96,8 +96,8 @@ static inline bool prrn_is_enabled(void)
 #define topology_thread_cpumask(cpu)	(per_cpu(cpu_sibling_map, cpu))
 #define topology_core_cpumask(cpu)	(per_cpu(cpu_core_map, cpu))
 #define topology_core_id(cpu)		(cpu_to_core_id(cpu))
-#endif
-#endif
+#endif /* CONFIG_PPC64 */
+#endif /* CONFIG_SMP */
 
 #endif /* __KERNEL__ */
 #endif	/* _ASM_POWERPC_TOPOLOGY_H */
