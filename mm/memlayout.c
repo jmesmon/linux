@@ -232,9 +232,8 @@ static void memlayout_expand(struct memlayout *ml)
 static void free_rme_tree(struct rb_root *root)
 {
 	struct rangemap_entry *pos, *n;
-	rbtree_postorder_for_each_entry_safe(pos, n, root, node) {
+	rbtree_postorder_for_each_entry_safe(pos, n, root, node)
 		kfree(pos);
-	}
 }
 
 void memlayout_destroy_mem(struct memlayout *ml)
