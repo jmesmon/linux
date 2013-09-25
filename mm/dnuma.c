@@ -351,7 +351,15 @@ void dnuma_add_page_to_new_zone(struct page *page, int order,
 static void remove_free_page_from_zone(struct memlayout *ml, struct zone *zone,
 				       struct page *page, int order)
 {
-	/* XXX: watermarks? */
+	/* XXX:
+	 * - do we need to "shrink" based on watermarks or reserves?
+	 * - can we schedule the "shrink" and still free to the new zone, or do
+	 *   we need to adjust our free-to-zone-goal?
+	 *
+	 * "shrink" via:
+	 * - writeback/kswapd/shrinkers
+	 * - updating watermarks & reserves based on current managed_pages
+	 */
 
 	list_del(&page->lru);
 	zone->free_area[order].nr_free--;
