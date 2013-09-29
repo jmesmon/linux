@@ -717,7 +717,6 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		spin_lock(&dest_zone->lock);
 		VM_BUG_ON(dest_zone == page_zone(page));
 
-		dest_zone->all_unreclaimable = 0;
 		dest_zone->pages_scanned = 0;
 
 		dnuma_add_page_to_new_zone(page, 0, dest_zone, dest_nid);
