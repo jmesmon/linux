@@ -751,7 +751,6 @@ static void free_one_page_to_new_zone(struct zone *zone, struct page *page,
 				      int order, int migratetype)
 {
 	spin_lock(&zone->lock);
-	zone->all_unreclaimable = 0;
 	zone->pages_scanned = 0;
 
 	dnuma_add_page_to_new_zone(page, order, zone, zone->node);
