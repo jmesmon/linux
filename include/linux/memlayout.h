@@ -140,6 +140,11 @@ static inline bool rme_bounds_pfn(struct rangemap_entry *rme, unsigned long pfn)
 	return rme->pfn_start <= pfn && pfn <= rme->pfn_end;
 }
 
+static inline bool rme_bounds_or_follows_pfn(struct rangemap_entry *rme, unsigned long pfn)
+{
+	return pfn <= rme->pfn_end;
+}
+
 static inline struct rangemap_entry *rme_next(struct rangemap_entry *rme)
 {
 	struct rb_node *node = rb_next(&rme->node);
