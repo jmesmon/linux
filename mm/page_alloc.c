@@ -727,6 +727,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		trace_mm_page_pcpu_drain(page, 0, mt);
 		if (likely(!is_migrate_isolate_page(page)))
 			__mod_zone_freepage_state(dest_zone, 1, mt);
+
 		ml_stat_inc(MLSTAT_PCP_DRAIN, NULL, dest_nid);
 		ml_stat_inc(MLSTAT_TRANSPLANT_ON_FREE, NULL, dest_nid);
 

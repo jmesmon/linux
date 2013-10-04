@@ -1,8 +1,8 @@
-#define pr_fmt(fmt) "dnuma: " fmt
+#define pr_fmt(fmt) "page transplant: " fmt
 
 #include <linux/atomic.h>
 #include <linux/bootmem.h>
-#include <linux/dnuma.h>
+#include <linux/page-transplant.h>
 #include <linux/memory.h>
 #include <linux/mm.h>
 #include <linux/mmzone.h>
@@ -45,38 +45,6 @@ int dnuma_page_needs_move_lookup(struct page *page)
 
 	return new_nid;
 }
-
-#ifdef CONFIG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
-void dnuma_page_being_allocated(struct zone *zone, struct page *page, int order)
-{
-	struct memlayout *ml;
-	int nid;
-	struct zone *future_zone;
-
-	rcu_read_lock();
-	ml = memlayout_rcu_deref_if_active();
-	if (!ml)
-		goto out;
-
-	nid = _memlayout_pfn_to_nid(ml, page_to_pfn(page));
-	if (nid == NUMA_NO_NODE)
-		goto out;
-
-	future_zone = nid_zone(nid, zone_idx(zone));
-
-	zone_adjust_managed_page_count(zone, -(1 << order));
-	zone_adjust_managed_page_count(future_zone, 1 << order);
-
-	update_per_zone_wmark_min();
-
-	ml_stat_add(MLSTAT_FUTURE_ZONE_FIXUP, ml, nid, order);
-out:
-	rcu_read_unlock();
-}
-#else
-void dnuma_page_being_allocated(struct zone *zone, struct page *page, int order)
-{}
-#endif
 
 static void lookup_node_clear_pfn(unsigned long pfn)
 {
@@ -205,74 +173,10 @@ static struct rangemap_entry *advance_rme(struct rangemap_entry *rme,
 	return rme;
 }
 
-#ifdef CONFIG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
-/*
- * given a zone, calculate
- * zone->managed_pages += <non-free pages that will be transplanted _to_ zone on free>
- *			- <non-free pages that will be transplanted _away_ from zone on free>
- *
- * Essentially: update a given @zone's managed_pages due to in-flight
- * (allocated) pages.
- *
- * This is split from update_present_page_counts() because we need to hold a
- * lock on the examined zone for the entirety of this function.
- *
- * TODO:
- *	- use zone spans to limit pfn scanning
- *
- * Issues:
- *	opens a hole where pages in this zone's freelists could be allocated
- *	(from other zones) between the time where we set this value and where
- *	the pages are transplanted between freelists, causing this value to be
- *	incorrect. To correct, we need to adjust managed pages when a page is
- *	allocated from a zone but will be transplanted.
- *
- *	No way to avoid, hooking the allocation path required.
- */
-static void zone_update_managed_pages(struct zone *zone, struct memlayout *ml)
-{
-	unsigned long flags;
-	//unsigned long seq;
-	struct rangemap_entry *rme;
-	unsigned long to = 0, from = 0;
-	spin_lock_irqsave(&zone->lock, flags);
-	ml_for_each_range(ml, rme) {
-		unsigned long pfn;
-		for (pfn = rme->pfn_start; pfn <= rme->pfn_end; pfn++) {
-			struct page *page;
-			struct zone *dest_zone, *curr_zone;
-			if (!pfn_valid(pfn))
-				continue;
-
-			page = pfn_to_page(pfn);
-			if (PageBuddy(page))
-				continue;
-
-			dest_zone = nid_zone(rme->nid, page_zonenum(page));
-			curr_zone = page_zone(page);
-
-			if (dest_zone == zone && !(curr_zone == zone))
-				to++;
-			else if (!(dest_zone == zone) && (curr_zone == zone))
-				from++;
-		}
-	}
-#if 0
-	do {
-		seq = zone_span_seqbegin(zone);
-	} while (zone_span_seqretry(zone, seq));
-#endif
-	spin_unlock_irqrestore(&zone->lock, flags);
-
-	pr_info("adjust_managed_page_count: Node %d %s: +%ld-%ld = %ld\n", zone->node, zone->name, to, from, to-from);
-	zone_adjust_managed_page_count(zone, to - from);
-}
-#endif
-
 /*
  * Note that this iteration assumes that memlayouts are contiguous, and have
  * the same minimal and maximal pfn.
- * 
+ *
  * Iterate over a pair of memlayouts
  */
 #define ml_pair_for_each(ml_new, ml_old, rme_new, rme_old, \
@@ -280,14 +184,12 @@ static void zone_update_managed_pages(struct zone *zone, struct memlayout *ml)
 	for ((rme_new) = rme_first(ml_new), \
 		(rme_old) = rme_first(ml_old),\
 		range_start_pfn = min((rme_new)->pfn_start, (rme_old)->pfn_start); \
-		\
-		((rme_old) && (rme_new)) ? \
+	     ((rme_old) && (rme_new)) ? \
 		(range_end_pfn = min((rme_new)->pfn_end, (rme_old)->pfn_end), 1) : \
 		(0);\
-		\
-		(range_start_pfn) = (range_end_pfn) + 1, \
+	     (range_start_pfn) = (range_end_pfn) + 1, \
 		(void)(((rme_new) = advance_rme(rme_new, range_start_pfn)) && \
-		((rme_old) = advance_rme(rme_old, range_start_pfn))))
+		       ((rme_old) = advance_rme(rme_old, range_start_pfn))))
 
 #define ml_pair_for_each_delta(ml_new, ml_old, rme_new, rme_old, \
 		range_start_pfn, range_end_pfn) \
@@ -296,6 +198,14 @@ static void zone_update_managed_pages(struct zone *zone, struct memlayout *ml)
 			/* do nothing, avoid trailing else */ \
 		} else
 
+/*
+ * old_ml -> new_ml must not have any valid-pfn changes (ie: no new gaps and no
+ * gaps removed)
+ *
+ * Gap changes are only allowed in memory hotplug, not page transplants
+ *
+ * TODO: look at unifying this and memory hotplug
+ */
 int dnuma_online_required_nodes_and_zones(struct memlayout *old_ml,
 		struct memlayout *new_ml)
 {
@@ -308,21 +218,6 @@ int dnuma_online_required_nodes_and_zones(struct memlayout *old_ml,
 		if (r)
 			return r;
 	}
-
-#ifdef CONFIG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
-	{
-		struct zone *zone;
-		/*
-		 * this calculation cannot be folded into the above because in addition
-		 * to updating zones that will have pages moved _to_ them, we also need
-		 * to update zones that have pages moved _from_ them.
-		 */
-		for_each_zone(zone)
-			zone_update_managed_pages(zone, new_ml);
-
-		update_per_zone_wmark_min();
-	}
-#endif
 
 	return 0;
 }
@@ -370,6 +265,8 @@ static void remove_free_page_from_zone(struct memlayout *ml, struct zone *zone,
 
 	lookup_node_clear_order(page, order);
 	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST_REMOVE, ml, zone->node, order);
+
+	zone_adjust_managed_page_count(old_zone, -(1 << order));
 }
 
 /*
@@ -388,15 +285,13 @@ static void __ref add_free_page_to_node(struct memlayout *ml,
 	dnuma_add_page_to_new_zone(page, order, dest_zone, dest_nid);
 	return_pages_to_zone(page, order, dest_zone);
 	ml_stat_add(MLSTAT_TRANSPLANT_FROM_FREELIST_ADD, ml, dest_nid, order);
-#ifdef CONFIG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
-	zone_adjust_managed_page_count(dest_zone, 1 << order);
 
+	zone_adjust_managed_page_count(dest_zone, 1 << order);
 	/*
-	 * TODO: only run after enough adjust_managed_page_count()s have
+	 * TODO: only run after enough zone_adjust_managed_page_count()s have
 	 * occured, batch
 	 */
 	update_per_zone_wmark_min();
-#endif
 }
 
 #ifdef CONFIG_DNUMA_STRICT_BOUNDS
@@ -432,6 +327,7 @@ static void add_split_pages_to_zones(
 }
 #endif
 
+#if 0
 /*
  * provided we have the destination zone (according to the current memlayout)
  * locked, this will return the page order if it is in the freelist, otherwise
@@ -450,6 +346,7 @@ static bool page_is_managed(struct page *page)
 	 */
 	return !PageReserved(page);
 }
+#endif
 
 /*
  * Callers must hold lock_memory_hotplug() for stability of present_pages.
@@ -489,9 +386,6 @@ static void update_present_page_counts(struct memlayout *new_ml)
 	unsigned long pfn = 0;
 	struct {
 		unsigned long present_pages;
-#ifndef CONFIG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
-		unsigned long managed_pages;
-#endif
 	} *ct = kzalloc(nr_node_ids * MAX_NR_ZONES * sizeof(*ct),
 		       GFP_KERNEL);
 	if (WARN_ON(!ct))
@@ -520,10 +414,6 @@ static void update_present_page_counts(struct memlayout *new_ml)
 		nid = rme->nid;
 
 		idx = page_count_idx(nid, page_zonenum(page));
-#ifndef CONFIG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
-		if (page_is_managed(page))
-			ct[idx].managed_pages++;
-#endif
 		ct[idx].present_pages++;
 	}
 
@@ -542,21 +432,13 @@ static void update_present_page_counts(struct memlayout *new_ml)
 			if (need_init_pageset)
 				need_zonelists_rebuild = true;
 
-			pr_debug("nid %d zone %d mp=%lu pp=%lu -> pp=%lu mp=%ld\n",
+			pr_debug("nid %d zone %d mp=%lu pp=%lu -> pp=%lu\n",
 					nid, zone_num,
 					zone->managed_pages,
 					zone->present_pages,
 					ct[idx].present_pages,
-#ifdef CONFIG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
-					-1
-#else
-					ct[idx].managed_pages
-#endif
 					);
-#ifndef CONFIG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
-			/* FIXME: locking */
-			zone->managed_pages = ct[idx].managed_pages;
-#endif
+
 			zone->present_pages = ct[idx].present_pages;
 			nid_present += zone->present_pages;
 			if (need_init_pageset
@@ -611,16 +493,27 @@ static void lock_2_zones(struct zone *z1, struct zone *z2,
 }
 
 /*
- * Returns the last pfn that was processed.
+ * transplant_pfn_range - move the pages [@pfn_start, @pfn_end] from @old to @new.
+ * @ml - the memlayout to accumulate statistics on (the new memory layout we
+ *       are changing to)
+ * @n  - every node which has free pages added to it gets a bit set here
+ * @zones_emptied - a bitmap containing all the zones on the system. the
+ *       function sets the bit corresponding to the zone if that zone was emptied
+ *       (all of it's free pages were removed)
+ * @pfn_start - inclusive start pfn
+ * @pfn_end   - inclusive end pfn
+ * @old       - the rme from the old memory layout that contains (at least) pfn_start
+ * @new       - the first rme from the new memlayout that will have pfns moved to it
+ *
+ * Returns the last pfn that was processed (the pfn returned will have been
+ * considered for transplanting and either transplanted or defered)
  *
  * Iterating over pfns in 3 range overlays
  * - new memory layout
  * - old memory layout
  * - higher order pages
- *
- * TODO: ensure this plays nice with migrate types.
  */
-static int dnuma_transplant_pfn_range(struct memlayout *ml,
+static int transplant_pfn_range(struct memlayout *ml,
 		nodemask_t *n, unsigned long *zones_emptied,
 		unsigned long pfn_start, unsigned long pfn_end,
 		struct rangemap_entry *old,
@@ -717,12 +610,14 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 
 		remove_free_page_from_zone(ml, old_zone, page, order);
 
+		/* XXX: there should be another drain zone stat on the
+		 * allocated-in-old_zone->free-in-new_zone ("on-free") path */
+		/* FIXME: this is an _unreliable_ hack so that zone stats look
+		 * decent.  need to have zone's track this themselves and drain
+		 * when needed (ex: put something that schedules a stat drain
+		 * into the managed_pages adjustment paths */
 		if (!populated_zone(old_zone) &&
-#ifndef CONFG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
 				nr_free_pages_in_zone(old_zone) == 0) {
-#else
-				!WARN_ON(nr_free_pages_in_zone(old_zone)) {
-#endif
 			pr_info("drain zonestat of Node %d %s\n",
 					old_zone->node, old_zone->name);
 			ml_stat_inc(MLSTAT_DRAIN_ZONESTAT, ml, new->nid);
@@ -730,10 +625,6 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 		}
 
 		spin_unlock_irqrestore(&old_zone->lock, flags);
-
-#ifdef CONFIG_DNUMA_MANAGED_PAGE_UPDATE_DELAY
-		zone_adjust_managed_page_count(old_zone, -(1 << order));
-#endif
 
 		if (last_pfn_in_page > pfn_end) {
 			/*
@@ -746,7 +637,6 @@ static int dnuma_transplant_pfn_range(struct memlayout *ml,
 					pfn_start, pfn_end,
 					RME_EXP(old), RME_EXP(new));
 #ifdef CONFIG_DNUMA_STRICT_BOUNDS
-
 			/*
 			 * painfully, a higher order page can extend past the
 			 * end of the region we are supposed to be examining,
@@ -781,7 +671,7 @@ skip_unlock_old:
  *  2) have been moved on free by examining and clearing the lookup mark OR
  *  3) still have their lookup mark set and still be allocated
  */
-int __ref dnuma_move_free_pages(struct memlayout *old_ml,
+int __ref transplant_free_pages(struct memlayout *old_ml,
 				struct memlayout *new_ml)
 {
 	struct rangemap_entry *old, *new;
@@ -798,7 +688,7 @@ int __ref dnuma_move_free_pages(struct memlayout *old_ml,
 	reduce_per_zone_wmarks_and_reserves();
 
 	ml_pair_for_each_delta(old_ml, new_ml, old, new, start_pfn, end_pfn)
-		end_pfn = dnuma_transplant_pfn_range(new_ml, &nodes_added_to,
+		end_pfn = transplant_pfn_range(new_ml, &nodes_added_to,
 				zones_emptied, start_pfn, end_pfn, old, new);
 
 	/*
@@ -837,3 +727,4 @@ int __ref dnuma_move_free_pages(struct memlayout *old_ml,
 	kfree(zones_emptied);
 	return 0;
 }
+

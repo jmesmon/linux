@@ -15,7 +15,7 @@ int dnuma_online_required_nodes_and_zones(struct memlayout *old_ml,
 		struct memlayout *new_ml);
 
 /* Must be called _after_ setting a new_ml to the pfn_to_node_map */
-int dnuma_move_free_pages(struct memlayout *old_ml, struct memlayout *new_ml);
+int transplant_free_pages(struct memlayout *old_ml, struct memlayout *new_ml);
 
 void dnuma_page_being_allocated(struct zone *zone, struct page *page,
 				int order);

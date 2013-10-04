@@ -179,32 +179,83 @@ int memlayout_pfn_to_nid(unsigned long pfn)
 	return nid;
 }
 
+#define rb_next_entry(item, field) rb_entry(rb_next(&(item)->field), typeof(*item), item)
+static struct rangemap_entry *rme_advance_to_pfn(struct rangemap_entry *rme, unsigned long pfn)
+{
+	while (rme && !rme_bounds_or_follows_pfn(rme, pfn))
+		rme = rb_next_entry(rme, node);
+}
+
+/* build a consectutive range of values. Provide indication when based on the
+ * new element, the old range should be acted upon. This occurs when the range
+ * has been started, but the new data is too far from the last given piece of
+ * data. */
+struct range_builder {
+	unsigned long first;
+	unsigned long last;
+	bool started;
+};
+
+#define RANGE_BUILDER_INIT { .started = false }
+static void rangeb_reset(struct range_builder *r)
+{
+	r->started = false;
+}
+
+static bool rangeb_creates_new_range(struct range_builder *r, unsigned long x)
+{
+	if (!r->started)
+		
+}
+
 /*
  * given a new memory layout that is not yet in use by the system,
- * modify it so that
- * - all pfns are included
- *   - handled by extending the first range to the beginning of memory and
- *     extending all other ranges until they abut the following range (or in the
- *     case of the last node, the end of memory)
+ * - check valid pfn coverage:
+ *   - if rme covers non-valid pfns, warn and shrink
+ *   - if valid pfns exist outside of rme warn and expand
+ *   - XXX: are there cases when we're changing the memlayout and these
+ *     shouldn't be done? (hot-add/hot-remove)
  *
  * Future work:
  *
- * 1) we could have it exclude pfn ranges that are !pfn_valid() if we hook
- * into the code which changes pfn validity.
- *  - Would this be a significant performance/code quality boost?
- *
- * 2) even further, we could munge the memlayout to handle cases where the
+ * 1) even further, we could munge the memlayout to handle cases where the
  * number of physical numa nodes exceeds nr_node_ids, and generally clean up
  * the node numbering (avoid nid gaps, renumber nids to reduce the need for
  * moving pages between nodes). These changes would require cooperation between
  * this and code which manages the mapping of CPUs to nodes.
  *
- * 3) we could merge adjacent ranges with the same nid.
+ * 2) we could merge adjacent ranges with the same nid.
  */
-static void memlayout_expand(struct memlayout *ml)
+static void memlayout_check_validity_changes(struct memlayout *ml)
+{
+	struct rb_node *r = rb_first(&ml->root);
+	struct rangemap_entry *rme = rb_entry(r, typeof(*rme), node),
+			      *prev = NULL, *next;
+	unsigned long pfn = 0;
+	bool prev_valid = false;
+
+	for (pfn = 0; pfn < max_pfn; pfn++) {
+		next = rme_advance_to_pfn(rme, pfn);
+		if (next != rme) {
+			prev = rme;
+			rme = next;
+		}
+
+		if (!pfn_valid(pfn) && rme_bounds_pfn(rme, pfn)) {
+			pr_warn("pfn %07x in rme "RME_FMT" is !valid\n",
+					pfn, RME_EXP(rme);
+		} else if (pfn_valid(pfn) && !rme_bounds_pfn(rme, pfn)) {
+			pr_warn("pfn %07x is valid but not contained in in following rme "RME_FMT"\n",
+				pfn, RME_EXP(rme));
+		}
+	}
+}
+
+static void memlayout_expand_to_fill_gaps(struct memlayout *ml)
 {
 	struct rb_node *r = rb_first(&ml->root);
 	struct rangemap_entry *rme = rb_entry(r, typeof(*rme), node), *prev;
+
 	if (rme->pfn_start != 0) {
 		pr_info("expanding rme "RME_FMT" to start of memory\n",
 				RME_EXP(rme));
@@ -273,7 +324,7 @@ void memlayout_commit(struct memlayout *ml)
 {
 	int r;
 	struct memlayout *old_ml;
-	memlayout_expand(ml);
+	memlayout_check_validity_changes(ml);
 
 	if (ml->type == ML_INITIAL) {
 		if (WARN(memlayout_exists(),
