@@ -1984,6 +1984,96 @@ static inline void init_zone_allows_reclaim(int nid)
 #endif	/* CONFIG_NUMA */
 
 /*
+ * @zone : the zone we are considering removing free pages from
+ * @gfp_mask: __GFP_WRITE
+ * @alloc_flags: watermark level (ALLOC_WMARK_MASK, ALLOC_WMARK_LOW),
+ *               watermark usage (ALLOC_NO_WATERMARKS),
+ *               whatever zone_watermark_ok() looks for
+ * @order: power of 2 number of free pages we are looking to remove.
+ */
+static bool zone_can_allocate(struct zone *zone, gfp_t gfp_mask, int alloc_flags, int order)
+{
+	unsigned long mark;
+	int ret;
+
+	if ((alloc_flags & ALLOC_CPUSET) &&
+		!cpuset_zone_allowed_softwall(zone, gfp_mask))
+		return false;
+
+	/*
+	 * When allocating a page cache page for writing, we
+	 * want to get it from a zone that is within its dirty
+	 * limit, such that no single zone holds more than its
+	 * proportional share of globally allowed dirty pages.
+	 * The dirty limits take into account the zone's
+	 * lowmem reserves and high watermark so that kswapd
+	 * should be able to balance it without having to
+	 * write pages from its LRU list.
+	 *
+	 * This may look like it could increase pressure on
+	 * lower zones by failing allocations in higher zones
+	 * before they are full.  But the pages that do spill
+	 * over are limited as the lower zones are protected
+	 * by this very same mechanism.  It should not become
+	 * a practical burden to them.
+	 *
+	 * XXX: For now, allow allocations to potentially
+	 * exceed the per-zone dirty limit in the slowpath
+	 * (ALLOC_WMARK_LOW unset) before going into reclaim,
+	 * which is important when on a NUMA setup the allowed
+	 * zones are together not big enough to reach the
+	 * global limit.  The proper fix for these situations
+	 * will require awareness of zones in the
+	 * dirty-throttling and the flusher threads.
+	 */
+	if ((alloc_flags & ALLOC_WMARK_LOW) &&
+			(gfp_mask & __GFP_WRITE) && !zone_dirty_ok(zone))
+		return false;
+
+	if (alloc_flags & ALLOC_NO_WATERMARKS)
+		return true;
+
+	mark = zone->watermark[alloc_flags & ALLOC_WMARK_MASK];
+	if (zone_watermark_ok(zone, order, mark,
+				classzone_idx, alloc_flags))
+		return true;
+
+	if (zone_reclaim_mode == 0 ||
+			!zone_allows_reclaim(preferred_zone, zone))
+		return false;
+
+	ret = zone_reclaim(zone, gfp_mask, order);
+	switch (ret) {
+		case ZONE_RECLAIM_NOSCAN:
+			/* did not scan */
+			return false;
+		case ZONE_RECLAIM_FULL:
+			/* scanned but unreclaimable */
+			return false;
+		default:
+			/* did we reclaim enough */
+			if (zone_watermark_ok(zone, order, mark,
+						classzone_idx, alloc_flags))
+				return true;
+
+			/*
+			 * Failed to reclaim enough to meet watermark.
+			 * Only mark the zone full if checking the min
+			 * watermark or if we failed to reclaim just
+			 * 1<<order pages or else the page allocator
+			 * fastpath will prematurely mark zones full
+			 * when the watermark is between the low and
+			 * min watermarks.
+			 */
+			if (((alloc_flags & ALLOC_WMARK_MASK) == ALLOC_WMARK_MIN) ||
+					ret == ZONE_RECLAIM_SOME)
+				return false;
+
+			return true;
+	}
+}
+
+/*
  * get_page_from_freelist goes through the zonelist trying to allocate
  * a page.
  */
