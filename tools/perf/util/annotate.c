@@ -1043,20 +1043,12 @@ static void __resort_source_line(struct rb_root *root, struct source_line *src_l
 
 static void resort_source_line(struct rb_root *dest_root, struct rb_root *src_root)
 {
-	struct source_line *src_line;
-	struct rb_node *node;
+	struct source_line *src_line, *next;
 
-	node = rb_first(src_root);
-	while (node) {
-		struct rb_node *next;
-
-		src_line = rb_entry(node, struct source_line, node);
-		next = rb_next(node);
-		rb_erase(node, src_root);
-
+	rbtree_postorder_for_each_entry_safe(src_line, next, src_root, node)
 		__resort_source_line(dest_root, src_line);
-		node = next;
-	}
+
+	*src_root = RB_ROOT;
 }
 
 static void symbol__free_source_line(struct symbol *sym, int len)
