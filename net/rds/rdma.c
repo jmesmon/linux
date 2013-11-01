@@ -133,6 +133,7 @@ void rds_rdma_drop_keys(struct rds_sock *rs)
 	unsigned long flags;
 
 	/* Release any MRs associated with this socket */
+	/* TODO: convert to rbtree_postorder_for_each_entry_safe() */
 	spin_lock_irqsave(&rs->rs_rdma_lock, flags);
 	while ((node = rb_first(&rs->rs_rdma_keys))) {
 		mr = container_of(node, struct rds_mr, r_rb_node);

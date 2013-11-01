@@ -8232,6 +8232,16 @@ int btrfs_free_block_groups(struct btrfs_fs_info *info)
 	up_write(&info->extent_commit_sem);
 
 	spin_lock(&info->block_group_cache_lock);
+
+#if 0
+	/* TODO: conversion */
+	rbtree_postorder_for_each_entry_safe(block_group, next,
+			&info->block_group_cache_tree, cache_node) {
+
+
+	}
+#endif
+
 	while ((n = rb_last(&info->block_group_cache_tree)) != NULL) {
 		block_group = rb_entry(n, struct btrfs_block_group_cache,
 				       cache_node);

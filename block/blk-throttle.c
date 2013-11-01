@@ -1598,6 +1598,7 @@ static void tg_drain_bios(struct throtl_service_queue *parent_sq)
 {
 	struct throtl_grp *tg;
 
+	/* TODO: convert to using rbtree_postorder_for_each_entry_safe() */
 	while ((tg = throtl_rb_first(parent_sq))) {
 		struct throtl_service_queue *sq = &tg->service_queue;
 		struct bio *bio;
