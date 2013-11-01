@@ -44,6 +44,17 @@ struct rb_root {
 };
 
 
+#ifdef CONFIG_DEBUG_RBTREE
+static inline void rb_poison_node(struct rb_node *n)
+{
+	n->rb_left = RBTREE_POISON1;
+	n->rb_right = RBTREE_POISON2;
+}
+#else
+static inline void rb_poison_node(struct rb_node *n)
+{}
+#endif
+
 #define rb_parent(r)   ((struct rb_node *)((r)->__rb_parent_color & ~3))
 
 #define RB_ROOT	(struct rb_root) { NULL, }
@@ -60,7 +71,6 @@ struct rb_root {
 
 extern void rb_insert_color(struct rb_node *, struct rb_root *);
 extern void rb_erase(struct rb_node *, struct rb_root *);
-
 
 /* Find logical next and previous nodes in a tree */
 extern struct rb_node *rb_next(const struct rb_node *);

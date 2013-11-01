@@ -22,6 +22,11 @@
 #define LIST_POISON1  ((void *) 0x00100100 + POISON_POINTER_DELTA)
 #define LIST_POISON2  ((void *) 0x00200200 + POISON_POINTER_DELTA)
 
+/********** include/linux/rbtree.h **********/
+
+#define RBTREE_POISON1 ((void *) 0x00300300 + POISON_POINTER_DELTA)
+#define RBTREE_POISON2 ((void *) 0x00400400 + POISON_POINTER_DELTA)
+
 /********** include/linux/timer.h **********/
 /*
  * Magic number "tsta" to indicate a static timer initializer
