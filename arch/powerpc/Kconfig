@@ -993,6 +993,10 @@ config PHYP_COUNTERS
 	 Enable a character device with ioctls that allow direct access to
 	 hypervisor tracked counters usable for (among other things) performace
          tracking.
+config PHYP_COUNTERS_TEST
+       tristate "Test PHYP counters"
+       help
+         Test phyp counters
 
 config RELOCATABLE
 	bool "Build a relocatable kernel"
