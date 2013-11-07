@@ -269,10 +269,14 @@
 #define H_COP			0x304
 #define H_GET_MPP_X		0x314
 #define H_SET_MODE		0x31C
-#define MAX_HCALL_OPCODE	H_SET_MODE
+#define H_GET_24X7_CATALOG_PAGE 0xF078
+#define H_GET_24X7_DATA		0xF07C
+#define H_GET_PERF_COUNTER_INFO 0xF080
+#define MAX_HCALL_OPCODE	H_GET_PERF_COUNTER_INFO
 
 /* Platform specific hcalls, used by KVM */
 #define H_RTAS			0xf000
+
 
 #ifndef __ASSEMBLY__
 
