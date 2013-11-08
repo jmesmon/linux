@@ -997,6 +997,10 @@ config PHYP_COUNTERS_TEST
        tristate "Test PHYP counters"
        help
          Test phyp counters
+config PHYP_24x7
+       tristate "24x7"
+       help
+         24x7 debugfs
 
 config RELOCATABLE
 	bool "Build a relocatable kernel"
