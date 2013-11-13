@@ -13,6 +13,8 @@
  *  Copyright (C) 2004 Nadia Yvette Chambers
  */
 
+#define pr_fmt(fmt) "ftrace: " fmt
+
 #include <linux/stop_machine.h>
 #include <linux/clocksource.h>
 #include <linux/kallsyms.h>
@@ -1687,24 +1689,24 @@ void ftrace_bug(int failed, unsigned long ip)
 	switch (failed) {
 	case -EFAULT:
 		FTRACE_WARN_ON_ONCE(1);
-		pr_info("ftrace faulted on modifying ");
+		pr_info("faulted on modifying ");
 		print_ip_sym(ip);
 		break;
 	case -EINVAL:
 		FTRACE_WARN_ON_ONCE(1);
-		pr_info("ftrace failed to modify ");
+		pr_info("failed to modify ");
 		print_ip_sym(ip);
 		print_ip_ins(" actual: ", (unsigned char *)ip);
 		printk(KERN_CONT "\n");
 		break;
 	case -EPERM:
 		FTRACE_WARN_ON_ONCE(1);
-		pr_info("ftrace faulted on writing ");
+		pr_info("faulted on writing ");
 		print_ip_sym(ip);
 		break;
 	default:
 		FTRACE_WARN_ON_ONCE(1);
-		pr_info("ftrace faulted on unknown error ");
+		pr_info("faulted on unknown error ");
 		print_ip_sym(ip);
 	}
 }
@@ -2318,6 +2320,43 @@ static int ftrace_update_code(struct module *mod)
 	return 0;
 }
 
+#define DECLARE_EARLY_STATIC_ALLOCATOR(subsys, name, nobj, obj_type) \
+	static obj_type static_##name[nobj]; \
+	static size_t static_##name##_allocated; \
+	static obj_type *subsys##_alloc_##name(void) { \
+		if (slab_is_avilable()) \
+			return kzmalloc(sizeof(*obj_type), GFP_KERNEL); \
+		static_##name##_allocated++;\
+		if (static_##name##_allocated - 1 < ARRAY_SIZE(static_##name)) { \
+			pr_info("alloc "#name": %zu items consumed\n", \
+					static_##name##_allocated); \
+			return static_##name[static_##name##_allocated - 1]; \
+		} \
+		pr_error("early allocation of "#subsys"/"#name" failed, wanted %zu objects\n", \
+				static_##name##_allocated ); \
+		return NULL; \
+	}
+
+#define DECLARE_EARLY_STATIC_PAGE_ALLOCATOR(subsys, name, npages) \
+	static uint8_t static_##name[npages][PAGE_SIZE] __aligned(PAGE_SIZE); \
+	static size_t static_##name##_allocated; \
+	static void *subsys##_alloc_##name(size_t order) { \
+		/* TODO: this doesn't switch to the page allocator as early as possible */\
+		if (slab_is_avilable()) \
+			return __get_free_pages(GFP_KERNEL | __GFP_ZERO, order); \
+		size_t to_alloc = 1 << order;
+		if ((static_##name##_allocated + to_alloc - 1) < npages) { \
+			static_##name##_allocated += to_alloc; \
+			return static_##name[static_##name##_allocated - to_alloc]; \
+		} \
+		pr_error("early page allocation of "#subsys"/"#name" failed\n"); \
+		return NULL; \
+	}
+
+DECLARE_EARLY_STATIC_ALLOCATOR(
+DECLARE_EARLY_STATIC_ALLOCATOR(ftrace, pgs, 8, struct ftrace_page)
+DECLARE_EARLY_STATIC_PAGE_ALLOCATOR(ftrace, pages, 118)
+
 static int ftrace_allocate_records(struct ftrace_page *pg, int count)
 {
 	int order;
@@ -2334,9 +2373,10 @@ static int ftrace_allocate_records(struct ftrace_page *pg, int count)
 	 */
 	while ((PAGE_SIZE << order) / ENTRY_SIZE >= count + ENTRIES_PER_PAGE)
 		order--;
+	pr_info("FTRACE: want to get order %d pages\n", order);
 
  again:
-	pg->records = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, order);
+	pg->records = ftrace_alloc_pages(order);
 
 	if (!pg->records) {
 		/* if we can't allocate this size, try something smaller */
@@ -2346,6 +2386,7 @@ static int ftrace_allocate_records(struct ftrace_page *pg, int count)
 		goto again;
 	}
 
+	pr_info("FTRACE: allocated order %d pages\n", order);
 	cnt = (PAGE_SIZE << order) / ENTRY_SIZE;
 	pg->size = cnt;
 
@@ -2366,7 +2407,7 @@ ftrace_allocate_pages(unsigned long num_to_init)
 	if (!num_to_init)
 		return 0;
 
-	start_pg = pg = kzalloc(sizeof(*pg), GFP_KERNEL);
+	start_pg = pg = ftrace_alloc_pgs();
 	if (!pg)
 		return NULL;
 
@@ -2384,7 +2425,7 @@ ftrace_allocate_pages(unsigned long num_to_init)
 		if (!num_to_init)
 			break;
 
-		pg->next = kzalloc(sizeof(*pg), GFP_KERNEL);
+		pg->next = ftrace_alloc_pgs();
 		if (!pg->next)
 			goto free_pages;
 
@@ -2401,7 +2442,7 @@ ftrace_allocate_pages(unsigned long num_to_init)
 		kfree(pg);
 		pg = start_pg;
 	}
-	pr_info("ftrace: FAILED to allocate memory for functions\n");
+	pr_info("FAILED to allocate memory for functions\n");
 	return NULL;
 }
 
@@ -2410,12 +2451,12 @@ static int __init ftrace_dyn_table_alloc(unsigned long num_to_init)
 	int cnt;
 
 	if (!num_to_init) {
-		pr_info("ftrace: No functions to be traced?\n");
+		pr_info("No functions to be traced?\n");
 		return -1;
 	}
 
 	cnt = num_to_init / ENTRIES_PER_PAGE;
-	pr_info("ftrace: allocating %ld entries in %d pages\n",
+	pr_info("allocating %ld entries in %d pages\n",
 		num_to_init, cnt + 1);
 
 	return 0;
@@ -4238,7 +4279,7 @@ void __init ftrace_init(void)
 	addr = (unsigned long)ftrace_stub;
 
 	local_irq_save(flags);
-	ftrace_dyn_arch_init(&addr);
+	ftrace_dyn_arch_init(&addr); /* EARLY START: need to check */
 	local_irq_restore(flags);
 
 	/* ftrace_dyn_arch_init places the return code in addr */
@@ -4247,7 +4288,7 @@ void __init ftrace_init(void)
 
 	count = __stop_mcount_loc - __start_mcount_loc;
 
-	ret = ftrace_dyn_table_alloc(count);
+	ret = ftrace_dyn_table_alloc(count); /* EARLY START: safe */
 	if (ret)
 		goto failed;
 

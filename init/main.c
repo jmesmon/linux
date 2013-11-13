@@ -577,6 +577,8 @@ asmlinkage void __init start_kernel(void)
 	if (panic_later)
 		panic(panic_later, panic_param);
 
+	ftrace_init();
+
 	lockdep_info();
 
 	/*
@@ -640,7 +642,6 @@ asmlinkage void __init start_kernel(void)
 		efi_free_boot_services();
 	}
 
-	ftrace_init();
 
 	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();
