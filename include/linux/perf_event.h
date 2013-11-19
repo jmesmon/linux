@@ -107,8 +107,10 @@ struct hw_perf_event {
 			u64		config;
 			u64		last_tag;
 			unsigned long	config_base;
+			/* pmu owned */
 			unsigned long	event_base;
 			int		event_base_rdpmc;
+			/* if ev->event_idx is NULL, used to locate */
 			int		idx;
 			int		last_cpu;
 			int		flags;
@@ -139,23 +141,42 @@ struct hw_perf_event {
 		};
 #endif
 	};
+
+	/* core r (only certain bits), pmu r/w, see PERF_HES_* below */
 	int				state;
+
+	/* core r/w, pmu r/w, contains local_time() from some point in time */
 	local64_t			prev_count;
+
+	/* core r/w, pmu r/w, initialy populated by attr.sample_period */
 	u64				sample_period;
+	/* core r, pmu r/w (not required), initialy set to sample_period, generally used
+	 * in calling perf_sample_data_init() */
 	u64				last_period;
+	/* core r/w, pmu r/w (not required), initialy set to sample_period,  */
 	local64_t			period_left;
+
+	/* core r/w for event overflow handling */
 	u64                             interrupts_seq;
+	/* core r/w for event overflow handling */
 	u64				interrupts;
 
+	/* core r/w (sets to perf_clock()) */
 	u64				freq_time_stamp;
+	/* core r/w, set to the previous value of ev->count, used for a delta
+	 * calculation for perf_adjust_period() */
 	u64				freq_count_stamp;
 #endif
 };
 
 /*
  * hw_perf_event::state flags
+ *
+ * Only PERF_HES_STOPPED has meaning to core, others are assigned pmu specific meaning.
  */
-#define PERF_HES_STOPPED	0x01 /* the counter is stopped */
+/* swevent will avoid triggering an "overflow" for stopped events */
+/* perf_event_index() will return 0 for an event which is stopped */
+#define PERF_HES_STOPPED	0x01 /* the counter is stopped (if counter cannot be stopped, do not set) */
 #define PERF_HES_UPTODATE	0x02 /* event->count up-to-date */
 #define PERF_HES_ARCH		0x04
 
@@ -185,6 +206,8 @@ struct pmu {
 
 	int * __percpu			pmu_disable_count;
 	struct perf_cpu_context * __percpu pmu_cpu_context;
+
+	/* 0 for most PMUs, set by swevent */
 	int				task_ctx_nr;
 	int				hrtimer_interval_ms;
 
