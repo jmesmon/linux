@@ -14,7 +14,7 @@ obj-$(CONFIG_FSL_EMB_PERF_EVENT_E500) += e500-pmu.o e6500-pmu.o
 obj-$(CONFIG_PPC64)		+= $(obj64-y)
 obj-$(CONFIG_PPC32)		+= $(obj32-y)
 
-obj-$(CONFIG_PHYP_COUNTERS)     += phyp-counter-ioctl.o
-obj-$(CONFIG_PHYP_24x7)         += 24x7-debug-catalog.o
-obj-$(CONFIG_PHYP_COUNTER_TEST) += phyp-phys-layout.o
-obj-$(CONFIG_PHYP_COUNTER_TEST) += phyp-uncore.o
+obj-$(CONFIG_PHYP_COUNTERS) += phyp-counter-ioctl.o
+obj-$(CONFIG_PHYP_COUNTERS) += 24x7-debug-catalog.o
+obj-$(CONFIG_PHYP_COUNTERS) += phyp-phys-layout.o
+obj-$(CONFIG_PHYP_COUNTERS) += phyp-hgpci-uncore.o

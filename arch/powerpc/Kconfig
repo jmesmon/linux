@@ -988,19 +988,14 @@ endmenu
 
 if PPC64
 config PHYP_COUNTERS
-       tristate "Enable character device interface to phyp counters"
+       tristate "Support PHYP supplied performance counters"
        help
 	 Enable a character device with ioctls that allow direct access to
 	 hypervisor tracked counters usable for (among other things) performace
          tracking.
-config PHYP_COUNTERS_TEST
-       tristate "Test PHYP counters"
-       help
-         Test phyp counters
-config PHYP_24x7
-       tristate "24x7"
-       help
-         24x7 debugfs
+
+	 Also builds a perf interface, a debugfs interface to determine
+         physical hw layout, and some test code.
 
 config RELOCATABLE
 	bool "Build a relocatable kernel"
