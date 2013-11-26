@@ -871,4 +871,27 @@ _name##_show(struct device *dev,					\
 									\
 static struct device_attribute format_attr_##_name = __ATTR_RO(_name)
 
+#define format_max(name) FORMAT_MAX_(name)()
+#define FORMAT_MAX_(name) format_##name##_max
+
+#define format_get(name, event) FORMAT_GET_(name)(event)
+#define FORMAT_GET_(name) format_get_##name
+
+#define PMU_FORMAT_RANGE(name, attr_var, bit_start, bit_end)		\
+PMU_FORMAT_RANGE_RESERVED(name, attr_var, bit_start, bit_end)		\
+PMU_FORMAT_ATTR(name, #attr_var ":" #bit_start "-" #bit_end)
+
+#define PMU_FORMAT_RANGE_RESERVED(name, attr_var, bit_start, bit_end)	\
+static u64 FORMAT_MAX_(name)(void)					\
+{									\
+	BUILD_BUG_ON((bit_start > bit_end)				\
+		    || (bit_end >= (sizeof(1ull) * 8)));		\
+	return (((1ull << (bit_end - bit_start)) - 1) << 1) + 1;	\
+}									\
+static u64 FORMAT_GET_(name)(struct perf_event *event)			\
+{									\
+	return (event->attr.attr_var >> (bit_start)) &			\
+		format_max(name);					\
+}
+
 #endif /* _LINUX_PERF_EVENT_H */
