@@ -7065,7 +7065,8 @@ SYSCALL_DEFINE5(perf_event_open,
 			 *
 			 * Allow the addition of software events to !software
 			 * groups, this is safe because software events never
-			 * fail to schedule.
+			 * fail to schedule and have ignorable transaction
+			 * handlers ({start,cancel,commit}_txn).
 			 */
 			pmu = group_leader->pmu;
 		} else if (is_software_event(group_leader) &&
