@@ -1033,6 +1033,10 @@ struct sched_rt_entity {
 struct rcu_node;
 
 enum perf_event_task_context {
+	/*
+	 * When <0, allocate a pmu local pmu->pmu_cpu_context (instead
+	 * of sharing among pmus in the same context) and forbid task tracking.
+	 */
 	perf_invalid_context = -1,
 	perf_hw_context = 0,
 	perf_sw_context,
