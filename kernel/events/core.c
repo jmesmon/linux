@@ -1723,10 +1723,10 @@ group_sched_in(struct perf_event *group_event,
 	if (group_event->state == PERF_EVENT_STATE_OFF)
 		return 0;
 
-	pmu->start_txn(pmu);
+	pmu->event_start_txn(group_event);
 
 	if (event_sched_in(group_event, cpuctx, ctx)) {
-		pmu->cancel_txn(pmu);
+		pmu->event_cancel_txn(group_event);
 		perf_cpu_hrtimer_restart(cpuctx);
 		return -EAGAIN;
 	}
@@ -1741,7 +1741,7 @@ group_sched_in(struct perf_event *group_event,
 		}
 	}
 
-	if (!pmu->commit_txn(pmu))
+	if (!pmu->event_commit_txn(group_event))
 		return 0;
 
 group_error:
@@ -1772,7 +1772,7 @@ group_error:
 	}
 	event_sched_out(group_event, cpuctx, ctx);
 
-	pmu->cancel_txn(pmu);
+	pmu->event_cancel_txn(group_event);
 
 	perf_cpu_hrtimer_restart(cpuctx);
 
@@ -6266,25 +6266,44 @@ static void perf_pmu_nop_void(struct pmu *pmu)
 {
 }
 
-static int perf_pmu_nop_int(struct pmu *pmu)
+static void perf_event_nop_void(struct perf_event *event)
+{
+}
+
+static int perf_event_nop_int(struct perf_event *event)
 {
 	return 0;
 }
 
-static void perf_pmu_start_txn(struct pmu *pmu)
+static void perf_event_start_txn(struct perf_event *event)
 {
-	perf_pmu_disable(pmu);
+	perf_pmu_disable(event->pmu);
 }
 
-static int perf_pmu_commit_txn(struct pmu *pmu)
+static int perf_event_commit_txn(struct perf_event *event)
 {
-	perf_pmu_enable(pmu);
+	perf_pmu_enable(event->pmu);
 	return 0;
 }
 
-static void perf_pmu_cancel_txn(struct pmu *pmu)
+static void perf_event_cancel_txn(struct perf_event *event)
 {
-	perf_pmu_enable(pmu);
+	perf_pmu_enable(event->pmu);
+}
+
+static void perf_event_cancel_txn_pmu(struct perf_event *event)
+{
+	event->pmu->cancel_txn(event->pmu);
+}
+
+static void perf_event_start_txn_pmu(struct perf_event *event)
+{
+	event->pmu->start_txn(event->pmu);
+}
+
+static int perf_event_commit_txn_pmu(struct perf_event *event)
+{
+	return event->pmu->commit_txn(event->pmu);
 }
 
 static int perf_event_idx_default(struct perf_event *event)
@@ -6507,20 +6526,29 @@ skip_type:
 	}
 
 got_cpu_context:
-	if (!pmu->start_txn) {
-		if (pmu->pmu_enable) {
+	if (!pmu->event_start_txn) {
+		if (pmu->start_txn) {
+			/*
+			 * If we use the {start,cancel,commit}_txn calls (and
+			 * in general we do), install stubs that call out to
+			 * them.
+			 */
+			pmu->event_start_txn  = perf_event_start_txn_pmu;
+			pmu->event_commit_txn = perf_event_commit_txn_pmu;
+			pmu->event_cancel_txn = perf_event_cancel_txn_pmu;
+		} else if (pmu->pmu_enable) {
 			/*
 			 * If we have pmu_enable/pmu_disable calls, install
 			 * transaction stubs that use that to try and batch
 			 * hardware accesses.
 			 */
-			pmu->start_txn  = perf_pmu_start_txn;
-			pmu->commit_txn = perf_pmu_commit_txn;
-			pmu->cancel_txn = perf_pmu_cancel_txn;
+			pmu->event_start_txn  = perf_event_start_txn;
+			pmu->event_commit_txn = perf_event_commit_txn;
+			pmu->event_cancel_txn = perf_event_cancel_txn;
 		} else {
-			pmu->start_txn  = perf_pmu_nop_void;
-			pmu->commit_txn = perf_pmu_nop_int;
-			pmu->cancel_txn = perf_pmu_nop_void;
+			pmu->event_start_txn  = perf_event_nop_void;
+			pmu->event_commit_txn = perf_event_nop_int;
+			pmu->event_cancel_txn = perf_event_nop_void;
 		}
 	}
 

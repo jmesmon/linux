@@ -235,6 +235,7 @@ struct pmu {
 	 * do schedulability tests.
 	 */
 	void (*start_txn)		(struct pmu *pmu); /* optional */
+	void (*event_start_txn)		(struct perf_event *event); /* optional */
 	/*
 	 * If ->start_txn() disabled the ->add() schedulability test
 	 * then ->commit_txn() is required to perform one. On success
@@ -242,11 +243,13 @@ struct pmu {
 	 * open until ->cancel_txn() is called.
 	 */
 	int  (*commit_txn)		(struct pmu *pmu); /* optional */
+	int  (*event_commit_txn)	(struct perf_event *event); /* optional */
 	/*
 	 * Will cancel the transaction, assumes ->del() is called
 	 * for each successful ->add() during the transaction.
 	 */
 	void (*cancel_txn)		(struct pmu *pmu); /* optional */
+	void (*event_cancel_txn)	(struct perf_event *event); /* optional */
 
 	/*
 	 * Will return the value for perf_event_mmap_page::index for this event,
