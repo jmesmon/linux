@@ -987,6 +987,13 @@ config PIN_TLB
 endmenu
 
 if PPC64
+config PHYP_COUNTERS
+       tristate "Enable character device interface to phyp counters"
+       help
+	 Enable a character device with ioctls that allow direct access to
+	 hypervisor tracked counters usable for (among other things) performace
+         tracking.
+
 config RELOCATABLE
 	bool "Build a relocatable kernel"
 	select NONSTATIC_KERNEL

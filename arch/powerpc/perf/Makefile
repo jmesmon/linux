@@ -13,3 +13,5 @@ obj-$(CONFIG_FSL_EMB_PERF_EVENT_E500) += e500-pmu.o e6500-pmu.o
 
 obj-$(CONFIG_PPC64)		+= $(obj64-y)
 obj-$(CONFIG_PPC32)		+= $(obj32-y)
+
+obj-$(CONFIG_PHYP_COUNTERS)     += phyp-counter-ioctl.o
