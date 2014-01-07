@@ -16,4 +16,5 @@ obj-$(CONFIG_PPC32)		+= $(obj32-y)
 
 obj-$(CONFIG_PHYP_COUNTERS)     += phyp-counter-ioctl.o
 obj-$(CONFIG_PHYP_24x7)         += 24x7-debug-catalog.o
+obj-$(CONFIG_PHYP_COUNTER_TEST) += phyp-phys-layout.o
 obj-$(CONFIG_PHYP_COUNTER_TEST) += phyp-uncore.o
