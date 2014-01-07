@@ -633,6 +633,12 @@ static inline bool is_software_event(struct perf_event *event)
 	return event->pmu->task_ctx_nr == perf_sw_context;
 }
 
+static inline bool pmu_needs_multiplexing(struct pmu *pmu)
+{
+	/* no multiplexing needed for SW PMU */
+	return pmu->task_ctx_nr != perf_sw_context;
+}
+
 extern struct static_key perf_swevent_enabled[PERF_COUNT_SW_MAX];
 
 extern void __perf_sw_event(u32, u64, struct pt_regs *, u64);

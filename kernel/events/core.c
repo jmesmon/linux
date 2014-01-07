@@ -794,7 +794,7 @@ void perf_cpu_hrtimer_cancel(int cpu)
 	list_for_each_entry_rcu(pmu, &pmus, entry) {
 		cpuctx = this_cpu_ptr(pmu->pmu_cpu_context);
 
-		if (pmu->task_ctx_nr == perf_sw_context)
+		if (!pmu_needs_multiplexing(pmu))
 			continue;
 
 		hrtimer_cancel(&cpuctx->hrtimer);
@@ -811,8 +811,7 @@ static void __perf_cpu_hrtimer_init(struct perf_cpu_context *cpuctx, int cpu)
 	struct pmu *pmu = cpuctx->ctx.pmu;
 	int timer;
 
-	/* no multiplexing needed for SW PMU */
-	if (pmu->task_ctx_nr == perf_sw_context)
+	if (!pmu_needs_multiplexing(pmu))
 		return;
 
 	/*
@@ -835,7 +834,7 @@ static void perf_cpu_hrtimer_restart(struct perf_cpu_context *cpuctx)
 	struct pmu *pmu = cpuctx->ctx.pmu;
 
 	/* not for SW PMU */
-	if (pmu->task_ctx_nr == perf_sw_context)
+	if (!pmu_needs_multiplexing(pmu))
 		return;
 
 	if (hrtimer_active(hr))
