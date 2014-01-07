@@ -472,4 +472,12 @@ union h_gpci_cvs {
 	struct cv_get_hpmcx get_hpmcx;
 };
 
+/* For ioctl: */
+struct counter_info_arg {
+	size_t bytes;
+	__user struct phyp_perf_counter_info_params *params;
+};
+
+#define COUNTER_INFO_IOCTL _IOWR('c', 0xB0, struct counter_info_arg)
+
 #endif
