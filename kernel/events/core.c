@@ -1252,7 +1252,7 @@ static void perf_group_attach(struct perf_event *event)
 	if (group_leader == event)
 		return;
 
-	if (group_leader->group_flags & PERF_GROUP_SOFTWARE &&
+	if (is_software_group(group_leader) &&
 			!is_software_event(event))
 		group_leader->group_flags &= ~PERF_GROUP_SOFTWARE;
 
@@ -1786,7 +1786,7 @@ static int group_can_go_on(struct perf_event *event,
 	/*
 	 * Groups consisting entirely of software events can always go on.
 	 */
-	if (event->group_flags & PERF_GROUP_SOFTWARE)
+	if (event->group_flags & PERF_GROUP_SCHED_BY_GROUP)
 		return 1;
 	/*
 	 * If an exclusive group is already on, no other hardware
@@ -7090,7 +7090,7 @@ SYSCALL_DEFINE5(perf_event_open,
 			 */
 			pmu = group_leader->pmu;
 		} else if (is_software_event(group_leader) &&
-			   (group_leader->group_flags & PERF_GROUP_SOFTWARE)) {
+			   is_software_group(group_leader)) {
 			/*
 			 * In case the group is a pure software group, and we
 			 * try to add a hardware event, move the whole group to

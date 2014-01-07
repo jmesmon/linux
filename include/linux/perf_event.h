@@ -271,7 +271,38 @@ typedef void (*perf_overflow_handler_t)(struct perf_event *,
 					struct pt_regs *regs);
 
 enum perf_group_flag {
-	PERF_GROUP_SOFTWARE		= 0x1,
+	/*
+	 * None of the events in this group come from a PMU with meaningful txn
+	 * handlers.
+	 */
+	PERF_GROUP_NO_TXN	= 0x1,
+
+	/*
+	 * schedulability of a group of events is determined only by those
+	 * events, not other events scheduled on the same pmu. In other words:
+	 * transactions are done on a group/event basis instead of a pmu basis.
+	 *
+	 * Negation implies that there are per-pmu reasources to be consumed ("SCHEDULE_BY_PMU").
+	 */
+	PERF_GROUP_SCHED_BY_GROUP = 0x2,
+
+	/*
+	 * All events in this group are software events (as determined by
+	 * is_software_event()). As a result, they are assumed to not have
+	 * meaningful txn functionality (PERF_GROUP_NO_TXN), and are
+	 * schedulable irregardless of other events running (they lack per-pmu
+	 * resources) (PERF_GROUP_SCHED_BY_GROUP).
+	 *
+	 * This allows them to be merged with hardware events from a single
+	 * hw pmu.
+	 *
+	 * Scheduling of these events will then use the hw pmu's txn calls (and
+	 * an event from the hw pmu will be the group_leader).
+	 *
+	 * "MERGABLE"
+	 */
+	PERF_GROUP_SOFTWARE     = PERF_GROUP_NO_TXN
+				| PERF_GROUP_SCHED_BY_GROUP,
 };
 
 #define SWEVENT_HLIST_BITS		8
@@ -631,6 +662,11 @@ static inline bool is_sampling_event(struct perf_event *event)
 static inline bool is_software_event(struct perf_event *event)
 {
 	return event->pmu->task_ctx_nr == perf_sw_context;
+}
+
+static inline bool is_software_group(struct perf_event *group_leader)
+{
+	return (group_leader->group_flags & PERF_GROUP_SOFTWARE) == PERF_GROUP_SOFTWARE;
 }
 
 static inline bool pmu_needs_multiplexing(struct pmu *pmu)
