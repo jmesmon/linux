@@ -18,3 +18,4 @@ obj-$(CONFIG_PHYP_COUNTERS) += phyp-counter-ioctl.o
 obj-$(CONFIG_PHYP_COUNTERS) += 24x7-debug-catalog.o
 obj-$(CONFIG_PHYP_COUNTERS) += phyp-phys-layout.o
 obj-$(CONFIG_PHYP_COUNTERS) += phyp-hgpci-uncore.o
+obj-$(CONFIG_PHYP_COUNTERS) += phyp-24x7-uncore.o
