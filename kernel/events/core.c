@@ -6275,8 +6275,9 @@ static int perf_event_idx_default(struct perf_event *event)
 }
 
 /*
- * Ensures all contexts with the same task_ctx_nr have the same
- * pmu_cpu_context too.
+ * Ensures all contexts with the same task_ctx_nr (where that task_ctx_nr
+ * is >=0) have the same pmu_cpu_context too. Contexts with with negative (<0)
+ * task_ctx_nr do not share pmu_cpu_contexts.
  */
 static void *find_pmu_context(int ctxn)
 {
