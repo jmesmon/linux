@@ -630,7 +630,7 @@ static inline bool is_sampling_event(struct perf_event *event)
 /*
  * Return 1 for a software event, 0 for a hardware event
  */
-static inline int is_software_event(struct perf_event *event)
+static inline bool is_software_event(struct perf_event *event)
 {
 	return event->pmu->task_ctx_nr == perf_sw_context;
 }
