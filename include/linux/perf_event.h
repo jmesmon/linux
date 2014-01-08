@@ -177,6 +177,12 @@ struct pmu {
 	const char			*name;
 	int				type;
 
+	/*
+	 * Indicates that muxing is not required and we are never limited by
+	 * per-pmu resources.
+	 */
+	bool				always_schedulable;
+
 	int * __percpu			pmu_disable_count;
 	struct perf_cpu_context * __percpu pmu_cpu_context;
 	int				task_ctx_nr;
@@ -663,6 +669,11 @@ static inline bool is_software_event(struct perf_event *event)
 	return event->pmu->task_ctx_nr == perf_sw_context;
 }
 
+static inline bool is_always_schedulable_event(struct perf_event *event)
+{
+	return event->pmu->always_schedulable;
+}
+
 static inline bool is_software_group(struct perf_event *group_leader)
 {
 	return (group_leader->group_flags & PERF_GROUP_SOFTWARE) == PERF_GROUP_SOFTWARE;
@@ -671,7 +682,8 @@ static inline bool is_software_group(struct perf_event *group_leader)
 static inline bool pmu_needs_multiplexing(struct pmu *pmu)
 {
 	/* no multiplexing needed for SW PMU */
-	return pmu->task_ctx_nr != perf_sw_context;
+	return !(pmu->task_ctx_nr == perf_sw_context ||
+			pmu->always_schedulable);
 }
 
 extern struct static_key perf_swevent_enabled[PERF_COUNT_SW_MAX];
