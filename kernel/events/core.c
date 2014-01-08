@@ -1121,6 +1121,9 @@ list_add_event(struct perf_event *event, struct perf_event_context *ctx)
 		if (is_software_event(event))
 			event->group_flags |= PERF_GROUP_SOFTWARE;
 
+		if (is_sched_by_group_event(event))
+			event->group_flags |= PERF_GROUP_SCHED_BY_GROUP;
+
 		list = ctx_group_list(event, ctx);
 		list_add_tail(&event->group_entry, list);
 	}
