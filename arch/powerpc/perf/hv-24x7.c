@@ -447,6 +447,28 @@ static int h_24x7_event_add(struct perf_event *event, int flags)
 	return 0;
 }
 
+static void h_24x7_start_txn(struct perf_event *event)
+{
+	/* NOP, all the work is done in commit */
+}
+
+static void h_24x7_cancel_txn(struct perf_event *event)
+{
+	/* called when an event fails to add. */
+	/* NOP, nothing to clean up from start_txn */
+}
+
+static int h_24x7_commit_txn(struct perf_event *event)
+{
+	/* try to generate the request buffer, if too big, return -1 */
+	return 0;
+}
+
+static void h_24x7_event_destroy(struct perf_event *event)
+{
+	if (event->hw
+}
+
 static struct pmu h_24x7_pmu = {
 	.task_ctx_nr = perf_invalid_context,
 	.events_sched_by_group = true,
@@ -459,6 +481,10 @@ static struct pmu h_24x7_pmu = {
 	.start       = h_24x7_event_start,
 	.stop        = h_24x7_event_stop,
 	.read        = h_24x7_event_update,
+
+	.event_start_txn = h_24x7_start_txn,
+	.event_cancel_txn = h_24x7_cancel_txn,
+	.event_commit_txn = h_24x7_commit_txn,
 
 	.event_idx = perf_swevent_event_idx,
 };

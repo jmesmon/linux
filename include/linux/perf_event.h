@@ -120,6 +120,8 @@ struct hw_perf_event {
 		};
 		struct { /* software */
 			struct hrtimer	hrtimer;
+			/* for creating event-based txns */
+			void *input, *output;
 		};
 		struct { /* tracepoint */
 			struct task_struct	*tp_target;
