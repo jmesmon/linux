@@ -248,6 +248,7 @@ static int h_gpci_event_init(struct perf_event *event)
 
 static struct pmu h_gpci_pmu = {
 	.task_ctx_nr = perf_invalid_context,
+	.events_sched_by_group = true,
 
 	.name = "hv_gpci",
 	.attr_groups = attr_groups,
