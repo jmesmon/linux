@@ -449,6 +449,7 @@ static int h_24x7_event_add(struct perf_event *event, int flags)
 
 static struct pmu h_24x7_pmu = {
 	.task_ctx_nr = perf_invalid_context,
+	.events_sched_by_group = true,
 
 	.name = "hv_24x7",
 	.attr_groups = attr_groups,
