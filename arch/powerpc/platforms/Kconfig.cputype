@@ -363,6 +363,12 @@ config PPC_PERF_CTRS
        help
          This enables the powerpc-specific perf_event back-end.
 
+config HV_PERF_CTRS_RAW
+       def_bool y
+       depends on PERF_EVENTS && PPC_HAVE_PMU_SUPPORT
+       help
+         Enable raw ioctl access to perf counters provided by the hypervisor
+
 config SMP
 	depends on PPC_BOOK3S || PPC_BOOK3E || FSL_BOOKE || PPC_47x
 	bool "Symmetric multi-processing support"
