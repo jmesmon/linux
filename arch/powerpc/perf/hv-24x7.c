@@ -447,6 +447,7 @@ static int h_24x7_event_add(struct perf_event *event, int flags)
 	return 0;
 }
 
+#if 0
 static void h_24x7_start_txn(struct perf_event *event)
 {
 	/* NOP, all the work is done in commit */
@@ -468,6 +469,7 @@ static void h_24x7_event_destroy(struct perf_event *event)
 {
 	if (event->hw
 }
+#endif
 
 static struct pmu h_24x7_pmu = {
 	.task_ctx_nr = perf_invalid_context,
@@ -482,9 +484,11 @@ static struct pmu h_24x7_pmu = {
 	.stop        = h_24x7_event_stop,
 	.read        = h_24x7_event_update,
 
+#if 0
 	.event_start_txn = h_24x7_start_txn,
 	.event_cancel_txn = h_24x7_cancel_txn,
 	.event_commit_txn = h_24x7_commit_txn,
+#endif
 
 	.event_idx = perf_swevent_event_idx,
 };
