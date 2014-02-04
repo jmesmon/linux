@@ -1,0 +1,8 @@
+What:		/sys/bus/event_sources/devices/hv_24x7/interface/catalog_24x7
+Date:		February 2014
+Contact:	Cody P Schafer <cody@linux.vnet.ibm.com>
+Description:
+		Provides access to the binary "24x7 catalog" provided by the
+		hypervisor on POWER7 and 8 systems. This catalog lists events
+		avaliable from the powerpc "hv_24x7" pmu. Its format is
+		documented in arch/powerpc/perf/hv_24x7.h.
