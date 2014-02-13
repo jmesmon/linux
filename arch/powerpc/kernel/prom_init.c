@@ -665,7 +665,7 @@ unsigned char ibm_architecture_vec[] = {
 
 	/* WARNING: if the length of the elements preceeding this changes,
 	 * update the offset to match */
-#define IBM_ARCH_VEC_VECTOR_COUNT_OFFSET 72
+#define IBM_ARCH_VEC_VECTOR_COUNT_OFFSET 71
 	6 - 1,				/* 6 option vectors (changed at runtime
 					   if vector 7 is included) */
 
