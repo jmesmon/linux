@@ -642,6 +642,15 @@ static void __init early_cmdline_parse(void)
 #define W(x)	((x) >> 24) & 0xff, ((x) >> 16) & 0xff, \
 		((x) >> 8) & 0xff, (x) & 0xff
 
+#define Z_2 0, 0
+#define Z_4 Z_2, Z_2
+#define Z_8 Z_4, Z_4
+#define Z_16 Z_8, Z_8
+#define Z_32 Z_16, Z_16
+#define Z_64 Z_32, Z_32
+#define Z_128 Z_64, Z_64
+#define Z_256 Z_128, Z_128
+
 unsigned char ibm_architecture_vec[] = {
 	W(0xfffe0000), W(0x003a0000),	/* POWER5/POWER5+ */
 	W(0xffff0000), W(0x003e0000),	/* POWER6 */
@@ -652,7 +661,12 @@ unsigned char ibm_architecture_vec[] = {
 	W(0xffffffff), W(0x0f000003),	/* all 2.06-compliant */
 	W(0xffffffff), W(0x0f000002),	/* all 2.05-compliant */
 	W(0xfffffffe), W(0x0f000001),	/* all 2.04-compliant and earlier */
-	6 - 1,				/* 6 option vectors */
+
+	/* WARNING: if the length of the elements preceeding this changes,
+	 * update the offset to match */
+#define IBM_ARCH_VEC_VECTOR_COUNT_OFFSET 72
+	6 - 1,				/* 6 option vectors (changed at runtime
+					   if vector 7 is included) */
 
 	/* option vector 1: processor architectures supported */
 	3 - 2,				/* length */
@@ -723,8 +737,81 @@ unsigned char ibm_architecture_vec[] = {
 	0,
 	0,
 	OV6_LINUX,
-
+	/* option vector 7: OS Identification (populated with data at runtime)
+	 * WARNING: we rely on this being the last vector in set_os_ident().
+	 */
+	0, /* length */
+	Z_256
 };
+
+static char *get_opt(const char *cmdline, const char *opt_name, size_t *opt_len)
+{
+	char *opt;
+	char *o = strstr(cmdline, opt_name);
+	if (!o)
+		return NULL;
+	o += strlen(opt_name);
+	opt = o;
+	while (*o && *o != ' ')
+		o++;
+
+	*opt_len = o - opt;
+	return opt;
+}
+
+#define strstarts(s, prefix) (!strncmp(s, prefix, strlen(prefix)))
+
+/*
+ * Take a raw ident string and setup ibm_architecture_vec to expose it
+ */
+static void _set_os_ident(const char *ident, size_t len)
+{
+	unsigned final_len = MAX(len, 256);
+	char *ident_dest = ibm_architecture_vec + sizeof(ibm_architecture_vec) - 256;
+	memcpy(ident_dest, ident, final_len);
+
+	/* length */
+	*(ident_dest - 1) = final_len - 2;
+
+	/* enable vector 7 */
+	ibm_architecture_vec[IBM_ARCH_VEC_VECTOR_COUNT_OFFSET]++;
+}
+
+/*
+ * Where ident is encoded as one of:
+ * "raw:<raw string>" (use the raw string)
+ * "version" (use the version number the kernel calls itself)
+ * "" (don't send any OS version)
+ */
+static void set_os_ident(const char *ident, size_t len)
+{
+	/* "" */
+	if (!len)
+		return;
+
+	if (strstarts(ident, "version")) {
+		_set_os_ident(UTS_RELEASE, strlen(UTS_RELEASE));
+	} else if (strstarts(ident, "raw:")) {
+		ident += 4;
+		len -= 4;
+		_set_os_ident(ident, len);
+	} else {
+		/* Complain at some point in the future when the log is working */
+	}
+}
+
+/* for before ibm,client-arch-support is called, set up ibm_architecture_vec */
+static void __init very_early_cmdline_parse(void)
+{
+	size_t len;
+	char *opt = get_opt(prom_cmd_line, "os_ident=", &len);
+	if (!opt) {
+		set_os_ident(CONFIG_POWERPC_DEFAULT_OS_IDENT);
+	} else {
+		set_os_ident(opt);
+	}
+}
+
 
 /* Old method - ELF header with PT_NOTE sections only works on BE */
 #ifdef __BIG_ENDIAN__
@@ -2978,8 +3065,10 @@ unsigned long __init prom_init(unsigned long r3, unsigned long r4,
 	 * On pSeries, inform the firmware about our capabilities
 	 */
 	if (of_platform == PLATFORM_PSERIES ||
-	    of_platform == PLATFORM_PSERIES_LPAR)
+	    of_platform == PLATFORM_PSERIES_LPAR) {
+		very_early_cmdline_parse();
 		prom_send_capabilities();
+	}
 #endif
 
 	/*

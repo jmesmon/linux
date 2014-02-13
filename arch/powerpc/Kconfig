@@ -438,6 +438,17 @@ config IRQ_ALL_CPUS
 	  CPU.  Generally saying Y is safe, although some problems have been
 	  reported with SMP Power Macintoshes with this option enabled.
 
+config DEFAULT_FW_OS_IDENT
+       string "Default identification to provide to the firmware"
+       default "version"
+       help
+	 Provide a default value for the "os-ident=" kernel argument. This
+	 value is passed to the firmware at boot time on pseries servers.
+
+         "version" -> use the kernel's version as detected at build time
+         "raw:<string>" -> use the value of <string>
+         "" -> don't give any identifier
+
 config NUMA
 	bool "NUMA support"
 	depends on PPC64
