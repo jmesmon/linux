@@ -30,10 +30,10 @@ unsigned long hv_perf_caps_get(struct hv_perf_caps *caps)
 	pr_devel("capability_mask: 0x%x\n", arg.caps.capability_mask);
 
 	caps->version = arg.params.counter_info_version_out;
-	caps->collect_privileged = arg.caps.perf_collect_privileged;
-	caps->ga = arg.caps.capability_mask & CV_CM_GA;
-	caps->expanded = arg.caps.capability_mask & CV_CM_EXPANDED;
-	caps->lab = arg.caps.capability_mask & CV_CM_LAB;
+	caps->collect_privileged = !!arg.caps.perf_collect_privileged;
+	caps->ga = !!(arg.caps.capability_mask & CV_CM_GA);
+	caps->expanded = !!(arg.caps.capability_mask & CV_CM_EXPANDED);
+	caps->lab = !!(arg.caps.capability_mask & CV_CM_LAB);
 
 	return r;
 }
