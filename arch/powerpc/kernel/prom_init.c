@@ -741,7 +741,7 @@ unsigned char ibm_architecture_vec[] = {
 	/* option vector 7: OS Identification (populated with data at runtime)
 	 * WARNING: we rely on this being the last vector in set_os_ident().
 	 */
-	0,
+	257 - 2,
 	Z_256 /* reserve 256 bytes */
 };
 
@@ -775,7 +775,7 @@ static void _set_os_ident(const char *ident, size_t len)
 	ident_dest[final_len] = '\0';
 
 	/* length */
-	*(ident_dest - 1) = final_len;
+	/* *(ident_dest - 1) = final_len; */
 
 	/* enable vector 7 */
 	ibm_architecture_vec[IBM_ARCH_VEC_VECTOR_COUNT_OFFSET]++;
