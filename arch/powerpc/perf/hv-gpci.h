@@ -235,9 +235,9 @@ struct cv_system_performance_capabilities {
 	__u8 perf_collect_privileged;
 
 	/* These following are only valid if counter_info_version >= 0x3 */
-#define CV_CM_GA       0x1
-#define CV_CM_EXPANDED 0x2
-#define CV_CM_LAB      0x4
+#define CV_CM_GA       (1 << 7)
+#define CV_CM_EXPANDED (1 << 6)
+#define CV_CM_LAB      (1 << 5)
 	/* remaining bits are reserved */
 	__u8 capability_mask;
 	__u8 reserved[0xE];
@@ -420,32 +420,32 @@ struct cv_processor_bus_topology {
 	__be32 fabric_chip_id;
 	__u8 reserved1[0x4];
 
-#define CV_IM_A_LINK_ACTIVE (1 << 0)
-#define CV_IM_B_LINK_ACTIVE (1 << 1)
-#define CV_IM_C_LINK_ACTIVE (1 << 2)
-/* Bits 3-5 are reserved */
-#define CV_IM_ABC_LINK_WIDTH_MASK ((1 << 6) | (1 << 7))
-#define CV_IM_ABC_LINK_WIDTH_SHIFT 6
+#define CV_IM_A_LINK_ACTIVE (1 << 31)
+#define CV_IM_B_LINK_ACTIVE (1 << 30)
+#define CV_IM_C_LINK_ACTIVE (1 << 29)
+/* Bits 3-5 (28,27,26) are reserved */
+#define CV_IM_ABC_LINK_WIDTH_MASK ((1 << 25) | (1 << 24))
+#define CV_IM_ABC_LINK_WIDTH_SHIFT 24
 #define CV_IM_ABC_LINK_WIDTH_8B 0x0
 #define CV_IM_ABC_LINK_WIDTH_4B 0x1
 
-#define CV_IM_W_LINK_ACTIVE (1 << 8)
-#define CV_IM_X_LINK_ACTIVE (1 << 9)
-#define CV_IM_Y_LINK_ACTIVE (1 << 10)
-#define CV_IM_Z_LINK_ACTIVE (1 << 11)
-/* Bits 12-13 are reserved */
+#define CV_IM_W_LINK_ACTIVE (1 << 23)
+#define CV_IM_X_LINK_ACTIVE (1 << 22)
+#define CV_IM_Y_LINK_ACTIVE (1 << 21)
+#define CV_IM_Z_LINK_ACTIVE (1 << 20)
+/* Bits 12-13 (19,18) are reserved */
 
-#define CV_IM_WXYZ_LINK_WIDTH_MASK ((1 << 14) | (1 << 15))
-#define CV_IM_WXYZ_LINK_WIDTH_SHIFT 14
+#define CV_IM_WXYZ_LINK_WIDTH_MASK ((1 << 17) | (1 << 16))
+#define CV_IM_WXYZ_LINK_WIDTH_SHIFT 16
 #define CV_IM_WXYZ_LINK_WIDTH_8B 0x0
 #define CV_IM_WXYZ_LINK_WIDTH_4B 0x1
 
-#define CV_IM_GX0_CONFIGURED (1 << 16)
-#define CV_IM_GX1_CONFIGURED (1 << 17)
-/* Bits 18-23 are reserved */
-#define CV_IM_MC0_CONFIGURED (1 << 24)
-#define CV_IM_MC1_CONFIGURED (1 << 25)
-/* Bits 26-31 are reserved */
+#define CV_IM_GX0_CONFIGURED (1 << 15)
+#define CV_IM_GX1_CONFIGURED (1 << 14)
+/* Bits 18-23 (13,12,11,10,9,8) are reserved */
+#define CV_IM_MC0_CONFIGURED (1 << 7)
+#define CV_IM_MC1_CONFIGURED (1 << 6)
+/* Bits 26-31 (5,4,3,2,1,0) are reserved */
 
 	__be32 info_mask;
 
