@@ -2310,7 +2310,7 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	os_ident=	[PPC]
 			Specify an os identification string to pass to
 			firmware at boot time (on pseries servers).
-			Format: "version" # use the build time uts release
+			Format: "version" # use the VERMAGIC_STRING
 				"raw:<string>" # use "<string>"
 				""             # do not identify
 

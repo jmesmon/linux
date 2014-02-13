@@ -28,6 +28,7 @@
 #include <linux/delay.h>
 #include <linux/initrd.h>
 #include <linux/bitops.h>
+#include <linux/vermagic.h>
 #include <asm/prom.h>
 #include <asm/rtas.h>
 #include <asm/page.h>
@@ -766,7 +767,7 @@ static char *get_opt(const char *cmdline, const char *opt_name, size_t *opt_len)
  */
 static void _set_os_ident(const char *ident, size_t len)
 {
-	unsigned final_len = MAX(len, 256);
+	size_t final_len = max_t(typeof(len), len, 256);
 	char *ident_dest = ibm_architecture_vec + sizeof(ibm_architecture_vec) - 256;
 	memcpy(ident_dest, ident, final_len);
 
@@ -776,6 +777,8 @@ static void _set_os_ident(const char *ident, size_t len)
 	/* enable vector 7 */
 	ibm_architecture_vec[IBM_ARCH_VEC_VECTOR_COUNT_OFFSET]++;
 }
+
+#define SL(s) s, strlen(s)
 
 /*
  * Where ident is encoded as one of:
@@ -790,7 +793,7 @@ static void set_os_ident(const char *ident, size_t len)
 		return;
 
 	if (strstarts(ident, "version")) {
-		_set_os_ident(UTS_RELEASE, strlen(UTS_RELEASE));
+		_set_os_ident(SL(VERMAGIC_STRING));
 	} else if (strstarts(ident, "raw:")) {
 		ident += 4;
 		len -= 4;
@@ -806,9 +809,9 @@ static void __init very_early_cmdline_parse(void)
 	size_t len;
 	char *opt = get_opt(prom_cmd_line, "os_ident=", &len);
 	if (!opt) {
-		set_os_ident(CONFIG_POWERPC_DEFAULT_OS_IDENT);
+		set_os_ident(SL(CONFIG_DEFAULT_FW_OS_IDENT));
 	} else {
-		set_os_ident(opt);
+		set_os_ident(opt, len);
 	}
 }
 
