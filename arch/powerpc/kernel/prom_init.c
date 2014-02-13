@@ -768,13 +768,14 @@ static char *get_opt(const char *cmdline, const char *opt_name, size_t *opt_len)
 static void _set_os_ident(const char *ident, size_t len)
 {
 	size_t final_len = max_t(typeof(len), len, 255);
-	char *ident_dest = ibm_architecture_vec + sizeof(ibm_architecture_vec) - 256;
+	unsigned char *ident_dest = ibm_architecture_vec +
+				    sizeof(ibm_architecture_vec) - 256;
 	memcpy(ident_dest, ident, final_len);
 
 	ident_dest[final_len] = '\0';
 
 	/* length */
-	*(ident_dest - 1) = final_len + 1 - 2;
+	*(ident_dest - 1) = final_len;
 
 	/* enable vector 7 */
 	ibm_architecture_vec[IBM_ARCH_VEC_VECTOR_COUNT_OFFSET]++;
