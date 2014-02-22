@@ -50,6 +50,9 @@ static ssize_t store_smt_snooze_delay(struct device *dev,
 	if (ret != 1)
 		return -EINVAL;
 
+	pr_warn_ratelimited("%s (%d): /sys/devices/system/cpu/cpu%d/smt-snooze-delay is deprecated and is a NOP\n",
+		  current->comm, task_pid_nr(current), cpu->dev.id);
+
 	per_cpu(smt_snooze_delay, cpu->dev.id) = snooze;
 	return count;
 }
@@ -59,6 +62,9 @@ static ssize_t show_smt_snooze_delay(struct device *dev,
 				     char *buf)
 {
 	struct cpu *cpu = container_of(dev, struct cpu, dev);
+
+	pr_warn_ratelimited("%s (%d): /sys/devices/system/cpu/cpu%d/smt-snooze-delay is deprecated and is a NOP\n",
+		  current->comm, task_pid_nr(current), cpu->dev.id);
 
 	return sprintf(buf, "%ld\n", per_cpu(smt_snooze_delay, cpu->dev.id));
 }
