@@ -82,3 +82,67 @@ Description:	POWER-systems specific performance monitoring events
 		Further, multiple terms like 'event=0xNNNN' can be specified
 		and separated with comma. All available terms are defined in
 		the /sys/bus/event_source/devices/<dev>/format file.
+
+
+What: /sys/bus/event_source/devices/<pmu>/events/<event>
+Date: 2014/02/24
+Contact:	Linux kernel mailing list <linux-kernel@vger.kernel.org>
+Description:	Per-pmu performance monitoring events specific to the running system
+
+		Each file (with a name not containing a '.') in the 'events'
+		directory describes a single performance monitoring event
+		supported by the <pmu>.
+
+		File contents:
+
+			<term>[=<value>][,<term>[=<value>]]...
+
+		Where <term> is one of the terms listed under
+		/sys/bus/event_source/devices/<pmu>/format/ and <value> is
+		a number is base-16 format with a '0x' prefix (lowercase only).
+		If a <term> is specified alone (without an assigned value), it
+		is implied that 0x1 is assigned to that <term>.
+
+		Examples (each of these lines would be in a seperate file):
+
+			event=0x2abc
+			event=0x423,inv,cmask=0x3
+			domain=0x1,offset=0x8,starting_index=0xffff
+
+		Each of the assignments indicates a value to be assigned to a
+		particular set of bits (as defined by the format file
+		corresponding to the <term>) in the perf_event structure passed
+		to the perf_open syscall.
+
+		Perf tool code reference:
+			parse_events_terms(terms, str)
+			 \-> parse_events__scanner(str, &data, PE_START_TERMS)
+			     \-> tools/perf/utils/parse-events.y
+
+		Format:
+			'\n' (newline) is ignored
+
+			event_config := event_config ',' event_term
+				      | event_term
+			event_term := name '=' name
+				    | name '=' value
+				    | name '=' value_sym_hw
+				    | name
+				    | value_sym_hw
+				    | term '=' name
+				    | term '=' value
+				    | term
+
+			(PE_NAME) name := '[a-zA-Z_*?][a-zA-Z0-9_*?-]*'
+			(PE_TERM) term := 'config' | 'config1' | 'config2' | 'name'
+			      | 'period' | 'branch_type'
+
+What: /sys/bus/event_source/devices/<pmu>/events/<event>.unit
+Date: 2014/02/24
+Contact:	Linux kernel mailing list <linux-kernel@vger.kernel.org>
+Description:	Perf event units
+
+What: /sys/bus/event_source/devices/<pmu>/events/<event>.scale
+Date: 2014/02/24
+Contact:	Linux kernel mailing list <linux-kernel@vger.kernel.org>
+Description:	Perf event scaling factors
