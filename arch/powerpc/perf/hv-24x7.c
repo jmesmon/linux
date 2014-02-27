@@ -365,7 +365,7 @@ static int h_24x7_event_init(struct perf_event *event)
 	    event->attr.exclude_idle   ||
 	    event->attr.exclude_host   ||
 	    event->attr.exclude_guest  ||
-	    is_sampling_event(event)) /* no sampling */
+	    (is_sampling_event(event) && !event->attr.freq)) /* no period sampling */
 		return -EINVAL;
 
 	/* no branch sampling */
@@ -406,6 +406,8 @@ static int h_24x7_event_init(struct perf_event *event)
 		return -EIO;
 	}
 
+	perf_swevent_init_hrtimer(event);
+
 	return 0;
 }
 
@@ -434,10 +436,12 @@ static void h_24x7_event_start(struct perf_event *event, int flags)
 {
 	if (flags & PERF_EF_RELOAD)
 		local64_set(&event->hw.prev_count, h_24x7_get_value(event));
+	perf_swevent_start_hrtimer(event);
 }
 
 static void h_24x7_event_stop(struct perf_event *event, int flags)
 {
+	perf_swevent_cancel_hrtimer(event);
 	h_24x7_event_update(event);
 }
 
