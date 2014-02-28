@@ -57,6 +57,11 @@ static struct attribute_group format_group = {
 	.attrs = format_attrs,
 };
 
+static struct attribute_group event_group = {
+	.name  = "events",
+	.attrs = hv_gpci_event_attrs,
+};
+
 #define HV_CAPS_ATTR(_name, _format)				\
 static ssize_t _name##_show(struct device *dev,			\
 			    struct device_attribute *attr,	\
@@ -102,6 +107,7 @@ static struct attribute_group interface_group = {
 
 static const struct attribute_group *attr_groups[] = {
 	&format_group,
+	&event_group,
 	&interface_group,
 	NULL,
 };
@@ -271,6 +277,8 @@ static int hv_gpci_init(void)
 	int r;
 	unsigned long hret;
 	struct hv_perf_caps caps;
+
+	hv_gpci_assert_offsets_correct();
 
 	if (!firmware_has_feature(FW_FEATURE_LPAR)) {
 		pr_debug("not a virtualized system, not enabling\n");
