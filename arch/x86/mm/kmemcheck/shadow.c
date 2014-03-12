@@ -30,7 +30,7 @@ void *kmemcheck_shadow_lookup(unsigned long address)
 	page = virt_to_page(address);
 	if (!page->shadow)
 		return NULL;
-	return page->shadow + (address & (PAGE_SIZE - 1));
+	return page->shadow + offset_in_page(address);
 }
 
 static void mark_shadow(void *address, unsigned int n,
