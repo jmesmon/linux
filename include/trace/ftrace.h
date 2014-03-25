@@ -287,6 +287,11 @@ static struct trace_event_functions ftrace_event_type_funcs_##call = {	\
 
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
 
+/*
+ * Generate
+ * ftrace_define_fields_<call>()
+ */
+
 #undef __field_ext
 #define __field_ext(type, item, filter_type)				\
 	ret = trace_define_field(event_call, #type, #item,		\
