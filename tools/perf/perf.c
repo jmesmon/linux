@@ -37,6 +37,7 @@ static struct cmd_struct commands[] = {
 	{ "buildid-list", cmd_buildid_list, 0 },
 	{ "diff",	cmd_diff,	0 },
 	{ "evlist",	cmd_evlist,	0 },
+	{ "evparse",	cmd_evparse,	0 },
 	{ "help",	cmd_help,	0 },
 	{ "list",	cmd_list,	0 },
 	{ "record",	cmd_record,	0 },

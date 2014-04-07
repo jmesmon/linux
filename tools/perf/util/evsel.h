@@ -357,4 +357,5 @@ for ((_evsel) = list_entry((_leader)->node.next, struct perf_evsel, node); 	\
      (_evsel) && (_evsel)->leader == (_leader);					\
      (_evsel) = list_entry((_evsel)->node.next, struct perf_evsel, node))
 
+size_t perf_event_attr__fprintf(struct perf_event_attr *attr, FILE *fp);
 #endif /* __PERF_EVSEL_H */

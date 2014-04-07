@@ -939,7 +939,7 @@ static int get_group_fd(struct perf_evsel *evsel, int cpu, int thread)
 #define PRINT_ATTR2(field1, field2) \
 	PRINT_ATTR2N(#field1, field1, #field2, field2)
 
-static size_t perf_event_attr__fprintf(struct perf_event_attr *attr, FILE *fp)
+size_t perf_event_attr__fprintf(struct perf_event_attr *attr, FILE *fp)
 {
 	size_t ret = 0;
 

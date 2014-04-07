@@ -16,6 +16,7 @@
 #include "parse-events-flex.h"
 #include "pmu.h"
 #include "thread_map.h"
+#include "debug.h"
 
 #define MAX_NAME_LEN 100
 
@@ -934,6 +935,8 @@ int parse_events(struct perf_evlist *evlist, const char *str)
 	int ret;
 
 	ret = parse_events__scanner(str, &data, PE_START_EVENTS);
+	printf("PARSE %s : %d\n", str, ret);
+
 	if (!ret) {
 		int entries = data.idx - evlist->nr_entries;
 		perf_evlist__splice_list_tail(evlist, &data.list, entries);
@@ -1316,6 +1319,7 @@ int parse_events_term__num(struct parse_events_term **term,
 int parse_events_term__str(struct parse_events_term **term,
 			   int type_term, char *config, char *str)
 {
+	printf("creating term: %s=%s\n", config, str);
 	return new_term(term, PARSE_EVENTS__TERM_TYPE_STR, type_term,
 			config, str, 0);
 }

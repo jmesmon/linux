@@ -5,12 +5,14 @@
 
 %{
 
+#define YYERROR_VERBOSE 1
 #define YYDEBUG 1
 
 #include <linux/compiler.h>
 #include <linux/list.h>
 #include "types.h"
 #include "util.h"
+#include "debug.h"
 #include "parse-events.h"
 #include "parse-events-bison.h"
 
@@ -18,8 +20,10 @@ extern int parse_events_lex (YYSTYPE* lvalp, void* scanner);
 
 #define ABORT_ON(val) \
 do { \
-	if (val) \
+	if (val) {\
+		fprintf(stderr, "ABORT_ON(%s) at %s:%d\n", #val, __FILE__, __LINE__);	\
 		YYABORT; \
+	}\
 } while (0)
 
 #define ALLOC_LIST(list) \
@@ -410,6 +414,7 @@ PE_TERM '=' PE_NAME
 {
 	struct parse_events_term *term;
 
+	printf("PARSE %s = %s", $1, $3);
 	ABORT_ON(parse_events_term__str(&term, (int)$1, NULL, $3));
 	$$ = term;
 }
@@ -437,6 +442,9 @@ sep_slash_dc: '/' | ':' |
 %%
 
 void parse_events_error(void *data __maybe_unused, void *scanner __maybe_unused,
-			char const *msg __maybe_unused)
+			char const *msg)
 {
+	if (verbose > 3) {
+		fprintf(stderr, "%s\n", msg);
+	}
 }

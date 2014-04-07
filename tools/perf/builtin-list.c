@@ -15,15 +15,17 @@
 #include "util/cache.h"
 #include "util/pmu.h"
 #include "util/parse-options.h"
+#include "util/debug.h"
 
 int cmd_list(int argc, const char **argv, const char *prefix __maybe_unused)
 {
 	int i;
 	const struct option list_options[] = {
+		OPT__VERBOSITY(&verbose),
 		OPT_END()
 	};
 	const char * const list_usage[] = {
-		"perf list [hw|sw|cache|tracepoint|pmu|event_glob]",
+		"perf list [-vq..] [hw|sw|cache|tracepoint|pmu|event_glob]",
 		NULL
 	};
 

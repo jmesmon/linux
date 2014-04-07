@@ -9,6 +9,7 @@
 #include "pmu.h"
 #include "parse-events.h"
 #include "cpumap.h"
+#include "debug.h"
 
 #define UNIT_MAX_LEN	31 /* max length for event unit name */
 
@@ -231,6 +232,9 @@ static int pmu_aliases_parse(char *dir, struct list_head *head)
 		if (!strcmp(name, ".") || !strcmp(name, ".."))
 			continue;
 
+		if (verbose > 2)
+			pr_info("parsing %s/%s\n", dir, name);
+
 		/*
 		 * skip .unit and .scale info files
 		 * parsed in perf_pmu__new_alias()
@@ -249,6 +253,9 @@ static int pmu_aliases_parse(char *dir, struct list_head *head)
 			break;
 
 		ret = perf_pmu__new_alias(head, dir, name, file);
+		if (ret && verbose > 2) {
+			printf("failed to parse %s/%s\n", dir, name);
+		}
 		fclose(file);
 	}
 
@@ -284,17 +291,17 @@ static int pmu_aliases(const char *name, struct list_head *head)
 static int pmu_alias_terms(struct perf_pmu_alias *alias,
 			   struct list_head *terms)
 {
-	struct parse_events_term *term, *clone;
+	struct parse_events_term *term, *term_clone;
 	LIST_HEAD(list);
 	int ret;
 
 	list_for_each_entry(term, &alias->terms, list) {
-		ret = parse_events_term__clone(&clone, term);
+		ret = parse_events_term__clone(&term_clone, term);
 		if (ret) {
 			parse_events__free_terms(&list);
 			return ret;
 		}
-		list_add_tail(&clone->list, &list);
+		list_add_tail(&term_clone->list, &list);
 	}
 	list_splice(&list, terms);
 	return 0;
@@ -348,8 +355,10 @@ static void pmu_read_sysfs(void)
 		 "%s" EVENT_SOURCE_DEVICE_PATH, sysfs);
 
 	dir = opendir(path);
-	if (!dir)
+	if (!dir) {
+		pr_warning("Could not open dir \"%s\"\n", path);
 		return;
+	}
 
 	while ((dent = readdir(dir))) {
 		if (!strcmp(dent->d_name, ".") || !strcmp(dent->d_name, ".."))
@@ -694,15 +703,24 @@ int perf_pmu__check_alias(struct perf_pmu *pmu, struct list_head *head_terms,
 
 	list_for_each_entry_safe(term, h, head_terms, list) {
 		alias = pmu_find_alias(pmu, term);
-		if (!alias)
+		if (!alias) {
+			/*
+			 * An ordinary occurance, this term might be a
+			 * format-term or real-term instead of an event-alias.
+			 */
 			continue;
+		}
 		ret = pmu_alias_terms(alias, &term->list);
-		if (ret)
+		if (ret) {
+			printf("pmu_alias_terms() failure %s/%s : %d\n", pmu->name, term->config, ret);
 			return ret;
+		}
 
 		ret = check_unit_scale(alias, unit, scale);
-		if (ret)
+		if (ret) {
+			printf("unit/scale check failure %s/%s : %d\n", pmu->name, term->config, ret);
 			return ret;
+		}
 
 		list_del(&term->list);
 		free(term);
@@ -812,12 +830,14 @@ void print_pmu_events(const char *event_glob, bool name_only)
 	aliases = malloc(sizeof(char *) * len);
 	if (!aliases)
 		return;
+
 	pmu = NULL;
 	j = 0;
 	while ((pmu = perf_pmu__scan(pmu)) != NULL)
 		list_for_each_entry(alias, &pmu->aliases, list) {
 			char *name = format_alias(buf, sizeof(buf), pmu, alias);
 			bool is_cpu = !strcmp(pmu->name, "cpu");
+			size_t size_for_params;
 
 			if (event_glob != NULL &&
 			    !(strglobmatch(name, event_glob) ||
@@ -832,6 +852,7 @@ void print_pmu_events(const char *event_glob, bool name_only)
 			aliases[j] = strdup(aliases[j]);
 			j++;
 		}
+
 	len = j;
 	qsort(aliases, len, sizeof(char *), cmp_string);
 	for (j = 0; j < len; j++) {
