@@ -272,12 +272,13 @@ static void *event_end(struct hv_24x7_event_data *ev, void *end)
 }
 
 static unsigned long h_get_24x7_catalog_page_(unsigned long phys_4096,
-					      u32 version, u32 index)
+					      unsigned long version,
+					      unsigned long index)
 {
 	pr_devel("h_get_24x7_catalog_page(0x%lx, %lu, %lu)",
 			phys_4096,
-			(unsigned long)version,
-			(unsigned long)index);
+			version,
+			index);
 	WARN_ON(!IS_ALIGNED(phys_4096, 4096));
 	return plpar_hcall_norets(H_GET_24X7_CATALOG_PAGE,
 			phys_4096,
