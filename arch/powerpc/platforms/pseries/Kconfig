@@ -123,6 +123,14 @@ config HV_PERF_CTRS
 
           If unsure, select Y.
 
+config HV_INFO
+       bool "Hypervisor information about the physical machine and sibling guests"
+       default y
+       depends on PPC_PSERIES
+       help
+	  Enable magic stuff using the GPCI interface to expose details about
+          the underlying physical system.
+
 config DTL
 	bool "Dispatch Trace Log"
 	depends on PPC_SPLPAR && DEBUG_FS
