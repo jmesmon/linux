@@ -506,7 +506,8 @@ static __u64 pmu_format_value(unsigned long *format, __u64 value)
 static void print_events_term(struct parse_events_term *term)
 {
 
-	printf("(term){.type_term=%d, .type_val=%d, .config=%s, ",term->type_term, term->type_val, term->config);
+	printf("(term){.type_term=%d, .type_val=%d, .config=%s, ",
+			term->type_term, term->type_val, term->config);
 	if (term->type_val == PARSE_EVENTS__TERM_TYPE_NUM)
 		printf(".val.num=%llu", (unsigned long long)term->val.num);
 	else
@@ -750,10 +751,33 @@ void perf_pmu__set_format(unsigned long *bits, long from, long to)
 		set_bit(b, bits);
 }
 
+static int sub_non_neg(int a, int b)
+{
+	if (b > a)
+		return 0;
+	return a - b;
+}
+
 static char *format_alias(char *buf, int len, struct perf_pmu *pmu,
 			  struct perf_pmu_alias *alias)
 {
-	snprintf(buf, len, "%s/%s/", pmu->name, alias->name);
+	struct parse_events_term *term;
+	int used = snprintf(buf, len, "%s/%s", pmu->name, alias->name);
+
+	list_for_each_entry(term, &alias->terms, list)
+		if (term->type_val == PARSE_EVENTS__TERM_TYPE_STR)
+			used += snprintf(buf + used, sub_non_neg(len, used),
+					",%s=?", term->val.str);
+
+	if (sub_non_neg(len, used) > 0) {
+		buf[used] = '/';
+		used++;
+	}
+	if (sub_non_neg(len, used) > 0) {
+		buf[used] = '\0';
+		used++;
+	} else
+		buf[len - 1] = '\0';
 	return buf;
 }
 
@@ -804,6 +828,7 @@ void print_pmu_events(const char *event_glob, bool name_only)
 			if (is_cpu && !name_only)
 				aliases[j] = format_alias_or(buf, sizeof(buf),
 							      pmu, alias);
+
 			aliases[j] = strdup(aliases[j]);
 			j++;
 		}
