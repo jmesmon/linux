@@ -684,8 +684,11 @@ static int check_unit_scale(struct perf_pmu_alias *alias,
 }
 
 /*
- * Find alias in the terms list and replace it with the terms
- * defined for the alias
+ * We have a list of terms from parsing something like "pmu/term,term,term/"
+ * Look through that term list for event-aliases, and expand each of those
+ * aliases in turn into their components terms.
+ *
+ * (No further resolution of the terms into base-terms is performed)
  */
 int perf_pmu__check_alias(struct perf_pmu *pmu, struct list_head *head_terms,
 			  const char **unit, double *scale)

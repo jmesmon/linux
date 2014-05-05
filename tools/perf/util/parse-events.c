@@ -630,6 +630,14 @@ static char *pmu_event_name(struct list_head *head_terms)
 	return NULL;
 }
 
+/*
+ * We've parsed an event specifier of the form pmu/terms/, process the parsed
+ * data and add the parsed event to the event list.
+ *
+ * TODO: support parameterized events
+ *	- perf_pmu__config() needs changes (currently fails with mixed aliases
+ *	and parameter-terms).
+ */
 int parse_events_add_pmu(struct list_head *list, int *idx,
 			 char *name, struct list_head *head_config)
 {
