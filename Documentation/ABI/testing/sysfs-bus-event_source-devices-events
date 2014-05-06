@@ -52,11 +52,17 @@ Description:	Per-pmu performance monitoring events specific to the running syste
 			event=0x2abc
 			event=0x423,inv,cmask=0x3
 			domain=0x1,offset=0x8,starting_index=0xffff
+			domain=0x1,offset=0x8,starting_index=phys_cpu
 
 		Each of the assignments indicates a value to be assigned to a
 		particular set of bits (as defined by the format file
 		corresponding to the <term>) in the perf_event structure passed
 		to the perf_open syscall.
+
+		In the case of the last example, a value replacing "phys_cpu"
+		would need to be provided by the user selecting the particular
+		event. This is refered to as "event parameterization". All
+		non-numerical values indicate an event parameter.
 
 What: /sys/bus/event_source/devices/<pmu>/events/<event>.unit
 Date: 2014/02/24
