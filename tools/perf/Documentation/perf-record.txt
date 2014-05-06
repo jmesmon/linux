@@ -33,6 +33,11 @@ OPTIONS
         - a raw PMU event (eventsel+umask) in the form of rNNN where NNN is a
 	  hexadecimal event descriptor.
 
+	- a symbolicly formed PMU event like 'pmu/value1=0x3,value2/' where
+	  'value1' and 'value2' are defined as formats in
+	  /sys/bus/event_sources/devices/pmu/format/* OR are one of 'config',
+	  'config1', 'config2'.
+
         - a hardware breakpoint event in the form of '\mem:addr[:access]'
           where addr is the address in memory you want to break in.
           Access is the memory access type (read, write, execute) it can
